@@ -16,17 +16,38 @@
   <!-- Markdown Renderer -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
+  <!-- Monaco Editor -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+
   <style>
     * { font-family: 'Inter', system-ui, sans-serif; }
     html, body { height: 100%; margin: 0; overflow: hidden; }
+
+    /* Editor container height */
     #editor { height: calc(100vh - 80px); }
+
+    /* Titlebar gradient */
     .titlebar { background: linear-gradient(to right, #7c3aed, #d946ef); }
+
+    /* Scrollbars */
     ::-webkit-scrollbar { width: 8px; }
     ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
-  </style>
 
-  <!-- Monaco Editor -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+    /* Fullscreen preview mode */
+    .fullscreen-preview {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      border-radius: 0;
+      z-index: 9999;
+      padding: 0 !important;
+    }
+
+    .editor-root.hidden {
+      display: none;
+    }
+  </style>
 </head>
 <body class="bg-slate-950 text-white">
 
@@ -37,7 +58,8 @@
     <div class="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px]"></div>
   </div>
 
-  <div class="flex h-screen">
+  <!-- Root wrapper (hidden during fullscreen preview) -->
+  <div class="editor-root flex h-screen">
 
     <!-- Sidebar -->
     <div class="w-64 bg-slate-900/60 backdrop-blur-xl border-r border-slate-800/50 p-4 overflow-y-auto">
@@ -63,6 +85,7 @@
         <button id="newFileBtn" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition">New File</button>
         <button id="saveFileBtn" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition">Save</button>
         <button id="togglePreviewBtn" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition">Preview</button>
+
         <span id="currentFile" class="ml-auto text-slate-400 truncate max-w-xs">No file open</span>
       </div>
 
@@ -79,188 +102,1163 @@
   </div>
 
   <!-- Preview Bubble -->
-  <div id="previewBubble" class="hidden fixed bottom-6 right-6 w-96 h-64 bg-slate-900/80 backdrop-blur-xl border border-violet-500/30 rounded-xl shadow-xl p-4 overflow-auto z-50">
-    <div class="flex justify-between items-center mb-2">
-      <h3 class="text-sm font-semibold text-violet-300">Preview</h3>
-      <button id="closePreview" class="text-slate-400 hover:text-white transition text-sm">✕</button>
+  <div id="previewBubble" class="hidden fixed bottom-6 right-6 w-[32rem] h-[22rem] bg-slate-900/90 backdrop-blur-xl border border-violet-500/30 rounded-xl shadow-xl p-4 overflow-hidden z-50 flex flex-col">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center gap-3">
+        <span class="text-sm font-semibold text-violet-300">Previewing:</span>
+
+        <!-- Dropdown -->
+        <select id="previewSelect" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-slate-300">
+        </select>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <!-- Fullscreen button -->
+        <button id="previewFullscreenBtn" class="text-slate-400 hover:text-white transition text-sm">
+          ⛶
+        </button>
+
+        <!-- Close bubble -->
+        <button id="closePreview" class="text-slate-400 hover:text-white transition text-sm">
+          ✕
+        </button>
+      </div>
     </div>
-    <iframe id="previewFrame" class="w-full h-full bg-slate-950 rounded-lg border border-slate-800"></iframe>
+
+    <!-- Preview iframe -->
+    <iframe id="previewFrame" class="flex-1 w-full bg-slate-950 rounded-lg border border-slate-800"></iframe>
   </div>
 
-  <script>
-    let editor;
-    let currentFileHandle = null;
-    let currentFolderHandle = null;
+  <!-- Fullscreen Preview Overlay -->
+  <div id="previewFullscreen" class="hidden fullscreen-preview bg-slate-950 text-white flex flex-col">
 
-    const fileList = document.getElementById("fileList");
-    const currentFileLabel = document.getElementById("currentFile");
-    const positionEl = document.getElementById("position");
-    const languageEl = document.getElementById("language");
+    <!-- Fullscreen Header -->
+    <div class="h-12 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800/50 flex items-center justify-between px-4 text-sm">
 
-    /* ---------------------------
-       MONACO SETUP
-    ----------------------------*/
-    require.config({
-      paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }
-    });
+      <div class="flex items-center gap-3">
+        <!-- Back arrow -->
+        <button id="previewBackBtn" class="text-slate-300 hover:text-white transition text-lg">
+          ←
+        </button>
 
-    require(['vs/editor/editor.main'], function () {
-      editor = monaco.editor.create(document.getElementById('editor'), {
-        value: [
-          "// Droplet ++ Editor",
-          "// Press Ctrl+Shift+P or click Preview to toggle the preview bubble.",
-          "",
-          "function helloDroplet() {",
-          "  console.log('Hello from Droplet ++');",
-          "}",
-          "",
-          "helloDroplet();"
-        ].join("\n"),
-        language: "javascript",
-        theme: "vs-dark",
-        automaticLayout: true,
-        fontSize: 15,
-        minimap: { enabled: true },
-        smoothScrolling: true,
-        cursorSmoothCaretAnimation: "on"
-      });
+        <span class="text-sm font-semibold text-violet-300">Previewing:</span>
 
-      editor.onDidChangeCursorPosition(e => {
-        positionEl.textContent = `Ln ${e.position.lineNumber}, Col ${e.position.column}`;
-      });
-    });
+        <!-- Dropdown -->
+        <select id="previewSelectFullscreen" class="bg-slate-800 border border-slate-700 rounded-lg px-2 py-1 text-sm text-slate-300">
+        </select>
+      </div>
 
-    /* ---------------------------
-       FILE SYSTEM
-    ----------------------------*/
-    document.getElementById("openFolderBtn").onclick = async () => {
-      try {
-        currentFolderHandle = await window.showDirectoryPicker();
-        fileList.innerHTML = "";
-        await loadFolderFiles();
-      } catch (e) {}
-    };
+      <span class="text-slate-500 text-xs">Fullscreen Preview</span>
+    </div>
 
-    async function loadFolderFiles() {
-      fileList.innerHTML = "";
-      for await (const entry of currentFolderHandle.values()) {
-        if (entry.kind === "file") {
-          const div = document.createElement("div");
-          div.className = "p-2 rounded-lg cursor-pointer hover:bg-slate-800 transition flex items-center gap-2";
-          div.textContent = entry.name;
-          div.onclick = () => openFile(entry);
-          fileList.appendChild(div);
-        }
-      }
+    <!-- Fullscreen iframe -->
+    <iframe id="previewFrameFullscreen" class="flex-1 w-full bg-slate-950"></iframe>
+  </div>
+
+</body>
+<script>
+/* -----------------------------------------------------------
+   PART 3 — MONACO EDITOR INITIALIZATION + BASIC EDITOR SETUP
+   ----------------------------------------------------------- */
+
+let editor;                     // Monaco editor instance
+let currentFile = null;         // Name of the currently open file
+let fileSystem = {};            // Virtual File System (VFS)
+let openedFolderHandle = null;  // File System Access API folder handle
+let autosaveTimer = null;       // Autosave debounce timer
+
+/* -----------------------------------------------------------
+   MONACO LOADER CONFIG
+   ----------------------------------------------------------- */
+
+require.config({
+  paths: {
+    vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs"
+  }
+});
+
+/* -----------------------------------------------------------
+   INITIALIZE MONACO EDITOR
+   ----------------------------------------------------------- */
+
+require(["vs/editor/editor.main"], function () {
+  editor = monaco.editor.create(document.getElementById("editor"), {
+    value: "",
+    language: "javascript",
+    theme: "vs-dark",
+    automaticLayout: true,
+    fontSize: 14,
+    minimap: { enabled: false },
+    scrollBeyondLastLine: false,
+  });
+
+  /* Cursor position display */
+  editor.onDidChangeCursorPosition(updateCursorPosition);
+
+  /* Autosave on change */
+  editor.onDidChangeModelContent(() => {
+    if (currentFile) {
+      fileSystem[currentFile] = editor.getValue();
+      scheduleAutosave();
     }
+  });
 
-    async function openFile(fileHandle) {
-      currentFileHandle = fileHandle;
-      const file = await fileHandle.getFile();
-      const text = await file.text();
+  restoreSession();
+});
 
-      const ext = file.name.includes(".") ? file.name.split(".").pop().toLowerCase() : "";
-      const lang = detectLanguage(ext);
+/* -----------------------------------------------------------
+   UPDATE CURSOR POSITION IN STATUS BAR
+   ----------------------------------------------------------- */
 
-      monaco.editor.setModelLanguage(editor.getModel(), lang);
-      languageEl.textContent = lang.charAt(0).toUpperCase() + lang.slice(1);
+function updateCursorPosition() {
+  const pos = editor.getPosition();
+  document.getElementById("position").textContent =
+    `Ln ${pos.lineNumber}, Col ${pos.column}`;
+}
 
-      editor.setValue(text);
-      currentFileLabel.textContent = file.name;
-    }
+/* -----------------------------------------------------------
+   SET LANGUAGE BASED ON FILE EXTENSION
+   ----------------------------------------------------------- */
 
-    function detectLanguage(ext) {
-      const map = {
-        js: "javascript",
-        ts: "typescript",
-        html: "html",
-        css: "css",
-        json: "json",
-        py: "python",
-        java: "java",
-        c: "c",
-        cpp: "cpp",
-        php: "php",
-        md: "markdown",
-        txt: "plaintext"
-      };
-      return map[ext] || "plaintext";
-    }
+function setLanguageForFile(filename) {
+  const ext = filename.split(".").pop().toLowerCase();
+  let lang = "plaintext";
 
-    document.getElementById("saveFileBtn").onclick = async () => {
-      if (!currentFileHandle) return alert("No file open.");
-      const writable = await currentFileHandle.createWritable();
+  if (ext === "js") lang = "javascript";
+  if (ext === "ts") lang = "typescript";
+  if (ext === "html") lang = "html";
+  if (ext === "css") lang = "css";
+  if (ext === "json") lang = "json";
+  if (ext === "md") lang = "markdown";
+
+  monaco.editor.setModelLanguage(editor.getModel(), lang);
+  document.getElementById("language").textContent = lang.toUpperCase();
+}
+
+/* -----------------------------------------------------------
+   LOAD A FILE INTO THE EDITOR
+   ----------------------------------------------------------- */
+
+function openFile(filename) {
+  currentFile = filename;
+  document.getElementById("currentFile").textContent = filename;
+
+  if (!fileSystem[filename]) fileSystem[filename] = "";
+
+  editor.setValue(fileSystem[filename]);
+  setLanguageForFile(filename);
+
+  updateFileList();
+  updatePreviewDropdowns();
+}
+
+/* -----------------------------------------------------------
+   UPDATE FILE LIST IN SIDEBAR
+   ----------------------------------------------------------- */
+
+function updateFileList() {
+  const list = document.getElementById("fileList");
+  list.innerHTML = "";
+
+  Object.keys(fileSystem).forEach(name => {
+    const btn = document.createElement("button");
+    btn.textContent = name;
+    btn.className =
+      "w-full text-left px-3 py-2 rounded-lg bg-slate-800/40 hover:bg-slate-700/40 transition";
+
+    btn.onclick = () => openFile(name);
+    list.appendChild(btn);
+  });
+}
+
+/* -----------------------------------------------------------
+   AUTOSAVE (LOCALSTORAGE)
+   ----------------------------------------------------------- */
+
+function scheduleAutosave() {
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(saveSession, 500);
+}
+
+function saveSession() {
+  localStorage.setItem("droplet_vfs", JSON.stringify(fileSystem));
+  localStorage.setItem("droplet_current", currentFile);
+}
+
+/* -----------------------------------------------------------
+   RESTORE SESSION ON PAGE LOAD
+   ----------------------------------------------------------- */
+
+function restoreSession() {
+  const savedVFS = localStorage.getItem("droplet_vfs");
+  const savedCurrent = localStorage.getItem("droplet_current");
+
+  if (savedVFS) fileSystem = JSON.parse(savedVFS);
+
+  updateFileList();
+
+  if (savedCurrent && fileSystem[savedCurrent]) {
+    openFile(savedCurrent);
+  }
+}
+</script>
+<script>
+/* -----------------------------------------------------------
+   PART 4A — NEW FILE + SAVE FILE BUTTONS
+   ----------------------------------------------------------- */
+
+/* NEW FILE */
+document.getElementById("newFileBtn").onclick = async () => {
+  const name = prompt("Enter new file name (example: script.js):");
+  if (!name) return;
+
+  if (fileSystem[name]) {
+    alert("A file with that name already exists.");
+    return;
+  }
+
+  fileSystem[name] = "";
+  openFile(name);
+  saveSession();
+};
+
+/* SAVE FILE */
+document.getElementById("saveFileBtn").onclick = async () => {
+  if (!currentFile) {
+    alert("No file is open.");
+    return;
+  }
+
+  fileSystem[currentFile] = editor.getValue();
+  saveSession();
+
+  /* If folder is open, write to disk */
+  if (openedFolderHandle) {
+    try {
+      const fileHandle = await openedFolderHandle.getFileHandle(currentFile, { create: true });
+      const writable = await fileHandle.createWritable();
       await writable.write(editor.getValue());
       await writable.close();
-    };
+    } catch (err) {
+      console.error("Error saving to disk:", err);
+    }
+  }
 
-    document.getElementById("newFileBtn").onclick = async () => {
-      if (!currentFolderHandle) return alert("Open a folder first.");
-      const name = prompt("Enter file name (e.g., script.js):");
-      if (!name) return;
-      const newFileHandle = await currentFolderHandle.getFileHandle(name, { create: true });
-      currentFileHandle = newFileHandle;
-      editor.setValue("");
-      currentFileLabel.textContent = name;
-      await loadFolderFiles();
-    };
+  alert("File saved.");
+};
+</script>
+<script>
+/* -----------------------------------------------------------
+   PART 4B — OPEN FOLDER (FILE SYSTEM ACCESS API)
+   ----------------------------------------------------------- */
 
-    /* ---------------------------
-       PREVIEW BUBBLE
-    ----------------------------*/
-    const previewBubble = document.getElementById("previewBubble");
-    const previewFrame = document.getElementById("previewFrame");
-    const togglePreviewBtn = document.getElementById("togglePreviewBtn");
-    const closePreview = document.getElementById("closePreview");
+document.getElementById("openFolderBtn").onclick = async () => {
+  try {
+    /* Ask user to pick a folder */
+    openedFolderHandle = await window.showDirectoryPicker();
 
-    function updatePreview() {
-      const code = editor.getValue();
-      const lang = languageEl.textContent.toLowerCase();
+    fileSystem = {}; // reset VFS
 
-      if (lang === "html") {
-        previewFrame.srcdoc = code;
-      } else if (lang === "markdown") {
-        previewFrame.srcdoc = `
-          <html>
-            <body style="background:#0f172a; color:white; font-family:Inter; padding:20px;">
-              ${marked.parse(code)}
-            </body>
-          </html>`;
-      } else {
-        previewFrame.srcdoc = `
-          <html>
-            <body style="background:#0f172a; color:white; font-family:Inter; padding:20px; white-space:pre;">
-              ${code.replace(/</g, "&lt;")}
-            </body>
-          </html>`;
+    /* Loop through all files in the folder */
+    for await (const entry of openedFolderHandle.values()) {
+      if (entry.kind === "file") {
+        const file = await entry.getFile();
+        const text = await file.text();
+        fileSystem[entry.name] = text;
       }
     }
 
-    function togglePreview() {
-      const hidden = previewBubble.classList.contains("hidden");
-      if (hidden) {
-        updatePreview();
-        previewBubble.classList.remove("hidden");
-      } else {
-        previewBubble.classList.add("hidden");
-      }
+    /* Update UI */
+    updateFileList();
+    saveSession();
+
+    /* Auto-open index.html if it exists */
+    if (fileSystem["index.html"]) {
+      openFile("index.html");
+    } else {
+      const first = Object.keys(fileSystem)[0];
+      if (first) openFile(first);
     }
 
-    togglePreviewBtn.onclick = togglePreview;
-    closePreview.onclick = togglePreview;
+    alert("Folder loaded successfully.");
 
-    editor?.onDidChangeModelContent(() => {
-      if (!previewBubble.classList.contains("hidden")) updatePreview();
+  } catch (err) {
+    console.error("Folder open cancelled or failed:", err);
+  }
+};
+</script>
+<script>
+/* -----------------------------------------------------------
+   PART 4C — WRITE FILES BACK TO DISK + VFS SYNC
+   ----------------------------------------------------------- */
+
+/* Helper: Write a single file to disk */
+async function writeFileToDisk(filename, content) {
+  if (!openedFolderHandle) return;
+
+  try {
+    /* Get or create the file handle */
+    const fileHandle = await openedFolderHandle.getFileHandle(filename, {
+      create: true
     });
 
-    // Keyboard shortcut: Ctrl+Shift+P
-    document.addEventListener("keydown", (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "p") {
-        e.preventDefault();
-        togglePreview();
-      }
-    });
-  </script>
+    /* Create a writable stream */
+    const writable = await fileHandle.createWritable();
+
+    /* Write content */
+    await writable.write(content);
+
+    /* Close stream */
+    await writable.close();
+
+    return true;
+
+  } catch (err) {
+    console.error(`Error writing ${filename}:`, err);
+    return false;
+  }
+}
+
+/* Save current file (enhanced) */
+async function saveCurrentFile() {
+  if (!currentFile) {
+    alert("No file is open.");
+    return;
+  }
+
+  const content = editor.getValue();
+  fileSystem[currentFile] = content;
+  saveSession();
+
+  /* If no folder is open, only save to VFS */
+  if (!openedFolderHandle) {
+    alert("Saved to virtual file system.");
+    return;
+  }
+
+  /* Try writing to disk */
+  const success = await writeFileToDisk(currentFile, content);
+
+  if (success) {
+    alert(`Saved ${currentFile} to disk.`);
+  } else {
+    alert(`Failed to save ${currentFile}. Check permissions.`);
+  }
+}
+
+/* Bind Save button */
+document.getElementById("saveFileBtn").onclick = saveCurrentFile;
+
+/* -----------------------------------------------------------
+   SYNC ENTIRE VFS BACK TO DISK
+   (Used when user wants to ensure all files are written)
+   ----------------------------------------------------------- */
+
+async function syncAllFilesToDisk() {
+  if (!openedFolderHandle) {
+    alert("No folder is open.");
+    return;
+  }
+
+  let successCount = 0;
+  let failCount = 0;
+
+  for (const [filename, content] of Object.entries(fileSystem)) {
+    const ok = await writeFileToDisk(filename, content);
+    if (ok) successCount++;
+    else failCount++;
+  }
+
+  alert(
+    `Sync complete.\n` +
+    `✔ ${successCount} files saved\n` +
+    `✖ ${failCount} failed`
+  );
+}
+
+/* Optional: Add a keyboard shortcut (Ctrl+S) */
+window.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+    e.preventDefault();
+    saveCurrentFile();
+  }
+});
+</script>
+<script>
+/* -----------------------------------------------------------
+   PART 4D — AUTOSAVE + LOCALSTORAGE BACKUP + SESSION RESTORE
+   ----------------------------------------------------------- */
+
+/* Debounce timer for autosave */
+let autosaveDelay = null;
+
+/* Trigger autosave when editor content changes */
+function triggerAutosave() {
+  clearTimeout(autosaveDelay);
+  autosaveDelay = setTimeout(() => {
+    saveSession();
+  }, 400);
+}
+
+/* Save VFS + current file + preview state */
+function saveSession() {
+  try {
+    localStorage.setItem("droplet_vfs", JSON.stringify(fileSystem));
+    localStorage.setItem("droplet_current", currentFile || "");
+    localStorage.setItem("droplet_preview", lastPreviewFile || "");
+  } catch (err) {
+    console.error("Autosave failed:", err);
+  }
+}
+
+/* Restore everything on page load */
+function restoreSession() {
+  try {
+    const savedVFS = localStorage.getItem("droplet_vfs");
+    const savedCurrent = localStorage.getItem("droplet_current");
+    const savedPreview = localStorage.getItem("droplet_preview");
+
+    /* Restore VFS */
+    if (savedVFS) {
+      fileSystem = JSON.parse(savedVFS);
+    }
+
+    updateFileList();
+
+    /* Restore last opened file */
+    if (savedCurrent && fileSystem[savedCurrent]) {
+      openFile(savedCurrent);
+    } else {
+      const first = Object.keys(fileSystem)[0];
+      if (first) openFile(first);
+    }
+
+    /* Restore preview selection */
+    if (savedPreview && fileSystem[savedPreview]) {
+      lastPreviewFile = savedPreview;
+    }
+
+  } catch (err) {
+    console.error("Failed to restore session:", err);
+  }
+}
+
+/* Track last previewed file */
+let lastPreviewFile = null;
+
+/* Update preview dropdowns when files change */
+function updatePreviewDropdowns() {
+  const bubbleSelect = document.getElementById("previewSelect");
+  const fullSelect = document.getElementById("previewSelectFullscreen");
+
+  bubbleSelect.innerHTML = "";
+  fullSelect.innerHTML = "";
+
+  Object.keys(fileSystem).forEach(name => {
+    const opt1 = document.createElement("option");
+    const opt2 = document.createElement("option");
+
+    opt1.value = name;
+    opt2.value = name;
+
+    opt1.textContent = name;
+    opt2.textContent = name;
+
+    bubbleSelect.appendChild(opt1);
+    fullSelect.appendChild(opt2);
+  });
+
+  /* Restore last previewed file if possible */
+  if (lastPreviewFile && fileSystem[lastPreviewFile]) {
+    bubbleSelect.value = lastPreviewFile;
+    fullSelect.value = lastPreviewFile;
+  }
+}
+
+/* Save preview selection */
+document.getElementById("previewSelect").addEventListener("change", (e) => {
+  lastPreviewFile = e.target.value;
+  saveSession();
+});
+
+document.getElementById("previewSelectFullscreen").addEventListener("change", (e) => {
+  lastPreviewFile = e.target.value;
+  saveSession();
+});
+</script>
+<script>
+/* -----------------------------------------------------------
+   PART 5A — BASE PREVIEW ENGINE + FILE ROUTING
+   ----------------------------------------------------------- */
+
+/* Decide what to preview and where */
+function renderCurrentPreviewInBubble() {
+  const select = document.getElementById("previewSelect");
+  const filename = select.value || currentFile;
+  if (!filename || !fileSystem[filename]) return;
+
+  lastPreviewFile = filename;
+  saveSession();
+
+  const iframe = document.getElementById("previewFrame");
+  renderPreview(filename, iframe);
+}
+
+function renderCurrentPreviewInFullscreen() {
+  const select = document.getElementById("previewSelectFullscreen");
+  const filename = select.value || currentFile;
+  if (!filename || !fileSystem[filename]) return;
+
+  lastPreviewFile = filename;
+  saveSession();
+
+  const iframe = document.getElementById("previewFrameFullscreen");
+  renderPreview(filename, iframe);
+}
+
+/* Main preview router */
+function renderPreview(filename, iframe) {
+  const content = fileSystem[filename] || "";
+  const ext = filename.split(".").pop().toLowerCase();
+
+  if (ext === "html") {
+    renderHTMLPreview(filename, content, iframe);
+  } else if (ext === "md") {
+    renderMarkdownPreview(filename, content, iframe);
+  } else if (ext === "json") {
+    renderJSONPreview(filename, content, iframe);
+  } else if (ext === "txt") {
+    renderTextPreview(filename, content, iframe);
+  } else if (ext === "js") {
+    renderJSPreview(filename, content, iframe);
+  } else if (ext === "ts") {
+    renderTSPreview(filename, content, iframe);
+  } else if (ext === "css") {
+    renderCSSPreview(filename, content, iframe);
+  } else {
+    renderTextPreview(filename, content, iframe);
+  }
+}
+</script>
+<script>
+/* -----------------------------------------------------------
+   PART 5B — HTML PREVIEW BUILDER (SANDBOXED)
+   ----------------------------------------------------------- */
+
+function buildHTMLDocument(mainFilename, mainContent) {
+  const allFiles = Object.keys(fileSystem);
+
+  /* Auto-include some common assets if present */
+  const cssFiles = allFiles.filter(name => name.endsWith(".css"));
+  const jsFiles  = allFiles.filter(name => name.endsWith(".js"));
+
+  let cssLinks = "";
+  let jsScripts = "";
+
+  cssFiles.forEach(name => {
+    cssLinks += `<style data-filename="${name}">\n${fileSystem[name]}\n</style>\n`;
+  });
+
+  jsFiles.forEach(name => {
+    jsScripts += `<script type="text/javascript" data-filename="${name}">\n${fileSystem[name]}\n<\/script>\n`;
+  });
+
+  /* If the main file is HTML, we respect it as-is but still inject assets
+     at the end of <head> / before </body> if tags exist. */
+  let html = mainContent;
+
+  if (!html.includes("<html")) {
+    html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>${mainFilename}</title>
+${cssLinks}
+</head>
+<body>
+${mainContent}
+${jsScripts}
+</body>
+</html>`;
+  } else {
+    /* Inject CSS into <head> if possible */
+    if (html.includes("</head>")) {
+      html = html.replace("</head>", cssLinks + "</head>");
+    } else {
+      html = html.replace("<html", `<html><head>${cssLinks}</head>`);
+    }
+
+    /* Inject JS before </body> if possible */
+    if (html.includes("</body>")) {
+      html = html.replace("</body>", jsScripts + "</body>");
+    } else {
+      html += jsScripts;
+    }
+  }
+
+  return html;
+}
+
+function writeToSandboxedIframe(iframe, html) {
+  /* Sandbox attributes: scripts allowed, but no top-level navigation or parent access */
+  iframe.setAttribute("sandbox", "allow-scripts allow-same-origin");
+
+  const doc = iframe.contentDocument || iframe.contentWindow.document;
+  doc.open();
+  doc.write(html);
+  doc.close();
+}
+
+function renderHTMLPreview(filename, content, iframe) {
+  const html = buildHTMLDocument(filename, content);
+  writeToSandboxedIframe(iframe, html);
+}
+</script>
+<script>
+/* -----------------------------------------------------------
+   PART 5C — JS / CSS / TS RENDERERS
+   ----------------------------------------------------------- */
+
+/* ------------------------------
+   JavaScript Preview
+   ------------------------------ */
+function renderJSPreview(filename, content, iframe) {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${filename}</title>
+</head>
+<body style="font-family: sans-serif; padding: 20px; color: white; background:#0f172a;">
+<h2>${filename}</h2>
+<p>Running JavaScript…</p>
+
+<script>
+try {
+  ${content}
+} catch (err) {
+  document.body.innerHTML += "<pre style='color:red;'>" + err + "</pre>";
+}
+<\/script>
 
 </body>
 </html>
+  `;
+
+  writeToSandboxedIframe(iframe, html);
+}
+
+/* ------------------------------
+   CSS Preview
+   ------------------------------ */
+function renderCSSPreview(filename, content, iframe) {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${filename}</title>
+<style>
+${content}
+</style>
+</head>
+<body style="font-family: sans-serif; padding: 20px; color: white; background:#0f172a;">
+<h2>${filename}</h2>
+<p>This is a CSS file. Styles are applied to this page.</p>
+<div style="margin-top:20px; padding:20px; background:#1e293b; border-radius:8px;">
+  <p>Sample styled box</p>
+</div>
+</body>
+</html>
+  `;
+
+  writeToSandboxedIframe(iframe, html);
+}
+
+/* ------------------------------
+   TypeScript Preview
+   ------------------------------ */
+function renderTSPreview(filename, content, iframe) {
+  let jsOutput = "";
+
+  try {
+    jsOutput = monaco.languages.typescript.getTypeScriptWorker()
+      .then(worker => worker(editor.getModel().uri))
+      .then(client => client.getEmitOutput(editor.getModel().uri.toString()))
+      .then(result => result.outputFiles[0].text);
+  } catch (err) {
+    jsOutput = `console.error("TS Compile Error:", ${JSON.stringify(err)});`;
+  }
+
+  Promise.resolve(jsOutput).then(js => {
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${filename}</title>
+</head>
+<body style="font-family: sans-serif; padding: 20px; color: white; background:#0f172a;">
+<h2>${filename}</h2>
+<p>Compiled TypeScript Output:</p>
+
+<script>
+try {
+  ${js}
+} catch (err) {
+  document.body.innerHTML += "<pre style='color:red;'>" + err + "</pre>";
+}
+<\/script>
+
+</body>
+</html>
+    `;
+
+    writeToSandboxedIframe(iframe, html);
+  });
+}
+</script>
+<script>
+/* -----------------------------------------------------------
+   PART 5D — MARKDOWN / JSON / TEXT RENDERERS
+   ----------------------------------------------------------- */
+
+/* ------------------------------
+   Markdown Renderer
+   ------------------------------ */
+function renderMarkdownPreview(filename, content, iframe) {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${filename}</title>
+<style>
+  body {
+    font-family: system-ui, sans-serif;
+    padding: 30px;
+    background: #0f172a;
+    color: #e2e8f0;
+    line-height: 1.6;
+  }
+  h1, h2, h3, h4 {
+    color: #f472b6;
+    margin-top: 1.4em;
+  }
+  pre {
+    background: #1e293b;
+    padding: 12px;
+    border-radius: 8px;
+    overflow-x: auto;
+  }
+  code {
+    background: #1e293b;
+    padding: 3px 6px;
+    border-radius: 4px;
+  }
+  a {
+    color: #93c5fd;
+  }
+</style>
+</head>
+<body>
+${marked.parse(content)}
+</body>
+</html>
+  `;
+
+  writeToSandboxedIframe(iframe, html);
+}
+
+/* ------------------------------
+   JSON Renderer
+   ------------------------------ */
+function renderJSONPreview(filename, content, iframe) {
+  let formatted = "";
+
+  try {
+    const obj = JSON.parse(content);
+    formatted = JSON.stringify(obj, null, 2);
+  } catch (err) {
+    formatted = "Invalid JSON:\n\n" + err;
+  }
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${filename}</title>
+<style>
+  body {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 20px;
+    font-family: monospace;
+    white-space: pre-wrap;
+  }
+  pre {
+    background: #1e293b;
+    padding: 20px;
+    border-radius: 8px;
+    overflow-x: auto;
+  }
+</style>
+</head>
+<body>
+<h2>${filename}</h2>
+<pre>${formatted.replace(/</g, "&lt;")}</pre>
+</body>
+</html>
+  `;
+
+  writeToSandboxedIframe(iframe, html);
+}
+
+/* ------------------------------
+   Plain Text Renderer
+   ------------------------------ */
+function renderTextPreview(filename, content, iframe) {
+  const safe = content.replace(/</g, "&lt;");
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>${filename}</title>
+<style>
+  body {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 20px;
+    font-family: monospace;
+    white-space: pre-wrap;
+  }
+  pre {
+    background: #1e293b;
+    padding: 20px;
+    border-radius: 8px;
+    overflow-x: auto;
+  }
+</style>
+</head>
+<body>
+<h2>${filename}</h2>
+<pre>${safe}</pre>
+</body>
+</html>
+  `;
+
+  writeToSandboxedIframe(iframe, html);
+}
+</script>
+<script>
+/* -----------------------------------------------------------
+   PART 5E — BUBBLE PREVIEW LOGIC
+   ----------------------------------------------------------- */
+
+const previewBubble = document.getElementById("previewBubble");
+const previewFrame = document.getElementById("previewFrame");
+const togglePreviewBtn = document.getElementById("togglePreviewBtn");
+const closePreviewBtn = document.getElementById("closePreview");
+
+/* ------------------------------
+   Open / Close Bubble Preview
+   ------------------------------ */
+
+togglePreviewBtn.addEventListener("click", () => {
+  if (previewBubble.classList.contains("hidden")) {
+    openPreviewBubble();
+  } else {
+    closePreviewBubble();
+  }
+});
+
+closePreviewBtn.addEventListener("click", () => {
+  closePreviewBubble();
+});
+
+/* Show bubble */
+function openPreviewBubble() {
+  previewBubble.classList.remove("hidden");
+  renderCurrentPreviewInBubble();
+}
+
+/* Hide bubble */
+function closePreviewBubble() {
+  previewBubble.classList.add("hidden");
+}
+
+/* ------------------------------
+   Update preview when dropdown changes
+   ------------------------------ */
+
+document.getElementById("previewSelect").addEventListener("change", () => {
+  lastPreviewFile = document.getElementById("previewSelect").value;
+  saveSession();
+  renderCurrentPreviewInBubble();
+});
+
+/* ------------------------------
+   Auto-refresh preview when editing
+   ------------------------------ */
+
+let previewRefreshTimer = null;
+
+editor.onDidChangeModelContent(() => {
+  if (!previewBubble.classList.contains("hidden")) {
+    clearTimeout(previewRefreshTimer);
+    previewRefreshTimer = setTimeout(() => {
+      renderCurrentPreviewInBubble();
+    }, 350);
+  }
+});
+
+/* ------------------------------
+   Auto-refresh preview when switching files
+   ------------------------------ */
+
+function refreshPreviewIfOpen() {
+  if (!previewBubble.classList.contains("hidden")) {
+    renderCurrentPreviewInBubble();
+  }
+}
+
+/* Hook into file switching */
+const originalOpenFile = openFile;
+openFile = function (filename) {
+  originalOpenFile(filename);
+  refreshPreviewIfOpen();
+};
+
+/* ------------------------------
+   Keep dropdowns synced
+   ------------------------------ */
+
+function syncBubbleDropdown() {
+  const select = document.getElementById("previewSelect");
+
+  if (lastPreviewFile && fileSystem[lastPreviewFile]) {
+    select.value = lastPreviewFile;
+  } else if (currentFile) {
+    select.value = currentFile;
+  }
+}
+
+/* Call this whenever file list changes */
+function updatePreviewDropdowns() {
+  const bubbleSelect = document.getElementById("previewSelect");
+  const fullSelect = document.getElementById("previewSelectFullscreen");
+
+  bubbleSelect.innerHTML = "";
+  fullSelect.innerHTML = "";
+
+  Object.keys(fileSystem).forEach(name => {
+    const opt1 = document.createElement("option");
+    const opt2 = document.createElement("option");
+
+    opt1.value = name;
+    opt2.value = name;
+
+    opt1.textContent = name;
+    opt2.textContent = name;
+
+    bubbleSelect.appendChild(opt1);
+    fullSelect.appendChild(opt2);
+  });
+
+  syncBubbleDropdown();
+}
+</script>
+<script>
+/* -----------------------------------------------------------
+   PART 5F — FULLSCREEN PREVIEW LOGIC
+   ----------------------------------------------------------- */
+
+const fullscreenContainer = document.getElementById("previewFullscreen");
+const fullscreenFrame = document.getElementById("previewFrameFullscreen");
+const fullscreenSelect = document.getElementById("previewSelectFullscreen");
+const fullscreenBackBtn = document.getElementById("previewBackBtn");
+
+const editorRoot = document.querySelector(".editor-root");
+
+/* ------------------------------
+   Open Fullscreen Preview
+   ------------------------------ */
+
+document.getElementById("previewFullscreenBtn").addEventListener("click", () => {
+  openFullscreenPreview();
+});
+
+function openFullscreenPreview() {
+  /* Hide editor UI */
+  editorRoot.classList.add("hidden");
+
+  /* Show fullscreen container */
+  fullscreenContainer.classList.remove("hidden");
+
+  /* Sync dropdown */
+  syncFullscreenDropdown();
+
+  /* Render preview */
+  renderCurrentPreviewInFullscreen();
+}
+
+/* ------------------------------
+   Close Fullscreen Preview
+   ------------------------------ */
+
+fullscreenBackBtn.addEventListener("click", () => {
+  closeFullscreenPreview();
+});
+
+function closeFullscreenPreview() {
+  fullscreenContainer.classList.add("hidden");
+  editorRoot.classList.remove("hidden");
+}
+
+/* ------------------------------
+   Dropdown change → update preview
+   ------------------------------ */
+
+fullscreenSelect.addEventListener("change", () => {
+  lastPreviewFile = fullscreenSelect.value;
+  saveSession();
+  renderCurrentPreviewInFullscreen();
+});
+
+/* ------------------------------
+   Sync dropdown with last previewed file
+   ------------------------------ */
+
+function syncFullscreenDropdown() {
+  const select = fullscreenSelect;
+
+  if (lastPreviewFile && fileSystem[lastPreviewFile]) {
+    select.value = lastPreviewFile;
+  } else if (currentFile) {
+    select.value = currentFile;
+  }
+}
+
+/* ------------------------------
+   Auto-refresh fullscreen preview on edit
+   ------------------------------ */
+
+let fullscreenRefreshTimer = null;
+
+editor.onDidChangeModelContent(() => {
+  if (!fullscreenContainer.classList.contains("hidden")) {
+    clearTimeout(fullscreenRefreshTimer);
+    fullscreenRefreshTimer = setTimeout(() => {
+      renderCurrentPreviewInFullscreen();
+    }, 350);
+  }
+});
+
+/* ------------------------------
+   Auto-refresh fullscreen preview on file switch
+   ------------------------------ */
+
+function refreshFullscreenIfOpen() {
+  if (!fullscreenContainer.classList.contains("hidden")) {
+    renderCurrentPreviewInFullscreen();
+  }
+}
+
+/* Hook into file switching */
+const originalOpenFileForFullscreen = openFile;
+openFile = function (filename) {
+  originalOpenFileForFullscreen(filename);
+  refreshFullscreenIfOpen();
+};
+</script>
+<script>
+/* -----------------------------------------------------------
+   PART 6 — FINAL INTEGRATION + GLUE LOGIC
+   ----------------------------------------------------------- */
+
+/* Ensure preview dropdowns update whenever file list changes */
+const originalUpdateFileList = updateFileList;
+updateFileList = function () {
+  originalUpdateFileList();
+  updatePreviewDropdowns();
+};
+
+/* Ensure preview refreshes when switching files */
+const originalOpenFileFinal = openFile;
+openFile = function (filename) {
+  originalOpenFileFinal(filename);
+
+  /* Refresh bubble preview if open */
+  if (!previewBubble.classList.contains("hidden")) {
+    renderCurrentPreviewInBubble();
+  }
+
+  /* Refresh fullscreen preview if open */
+  if (!fullscreenContainer.classList.contains("hidden")) {
+    renderCurrentPreviewInFullscreen();
+  }
+};
+
+/* Ensure preview refreshes when saving */
+const originalSaveCurrentFile = saveCurrentFile;
+saveCurrentFile = async function () {
+  await originalSaveCurrentFile();
+
+  if (!previewBubble.classList.contains("hidden")) {
+    renderCurrentPreviewInBubble();
+  }
+  if (!fullscreenContainer.classList.contains("hidden")) {
+    renderCurrentPreviewInFullscreen();
+  }
+};
+
+/* Ensure preview dropdowns stay synced */
+function syncAllPreviewDropdowns() {
+  const bubbleSelect = document.getElementById("previewSelect");
+  const fullSelect = document.getElementById("previewSelectFullscreen");
+
+  if (lastPreviewFile && fileSystem[lastPreviewFile]) {
+    bubbleSelect.value = lastPreviewFile;
+    fullSelect.value = lastPreviewFile;
+  } else if (currentFile) {
+    bubbleSelect.value = currentFile;
+    fullSelect.value = currentFile;
+  }
+}
+
+/* Call this whenever anything changes */
+function refreshAllPreviews() {
+  if (!previewBubble.classList.contains("hidden")) {
+    renderCurrentPreviewInBubble();
+  }
+  if (!fullscreenContainer.classList.contains("hidden")) {
+    renderCurrentPreviewInFullscreen();
+  }
+  syncAllPreviewDropdowns();
+}
+
+/* Refresh previews when editor content changes */
+editor.onDidChangeModelContent(() => {
+  refreshAllPreviews();
+});
+
+/* Refresh previews when window regains focus (optional) */
+window.addEventListener("focus", () => {
+  refreshAllPreviews();
+});
+
+/* Initial sync on load */
+updatePreviewDropdowns();
+syncAllPreviewDropdowns();
+refreshAllPreviews();
+
+console.log("%cDroplet++ Editor Loaded", "color:#c084fc;font-size:14px;");
+</script>
+
