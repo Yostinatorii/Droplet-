@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Droplet ++ — Editor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- TailwindCSS -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+
+  <!-- Inter Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Markdown Renderer -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <style>
+    * { font-family: 'Inter', system-ui, sans-serif; }
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    #editor { height: calc(100vh - 80px); }
+    .titlebar { background: linear-gradient(to right, #7c3aed, #d946ef); }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+  </style>
+
+  <!-- Monaco Editor -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+</head>
+<body class="bg-slate-950 text-white">
+
+  <!-- Background Effects -->
+  <div class="fixed inset-0 -z-10">
+    <div class="absolute top-0 left-1/4 w-96 h-96 bg-violet-500/20 rounded-full blur-3xl"></div>
+    <div class="absolute bottom-0 right-1/4 w-96 h-96 bg-fuchsia-500/20 rounded-full blur-3xl"></div>
+    <div class="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px]"></div>
+  </div>
+
+  <div class="flex h-screen">
+
+    <!-- Sidebar -->
+    <div class="w-64 bg-slate-900/60 backdrop-blur-xl border-r border-slate-800/50 p-4 overflow-y-auto">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-sm font-semibold text-slate-300 uppercase tracking-wide">Files</h2>
+        <a href="index.html" class="text-xs text-slate-500 hover:text-slate-200 transition-colors">Home</a>
+      </div>
+      <div id="fileList" class="space-y-1 text-sm"></div>
+    </div>
+
+    <!-- Main -->
+    <div class="flex-1 flex flex-col">
+
+      <!-- Titlebar -->
+      <div class="titlebar h-14 flex items-center px-6 border-b border-slate-800/50">
+        <div class="w-3 h-3 rounded-full bg-white/80 mr-3"></div>
+        <h1 class="text-lg font-semibold tracking-wide">Droplet ++ Editor</h1>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="h-12 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800/50 flex items-center gap-3 px-4 text-sm">
+        <button id="openFolderBtn" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition">Open Folder</button>
+        <button id="newFileBtn" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition">New File</button>
+        <button id="saveFileBtn" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition">Save</button>
+        <button id="togglePreviewBtn" class="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition">Preview</button>
+        <span id="currentFile" class="ml-auto text-slate-400 truncate max-w-xs">No file open</span>
+      </div>
+
+      <!-- Editor -->
+      <div id="editor"></div>
+
+      <!-- Status Bar -->
+      <div class="h-10 bg-slate-900/80 backdrop-blur-xl border-t border-slate-800/50 flex items-center justify-between px-4 text-sm text-slate-400">
+        <span id="position">Ln 1, Col 1</span>
+        <span id="language">JavaScript</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Preview Bubble -->
+  <div id="previewBubble" class="hidden fixed bottom-6 right-6 w-96 h-64 bg-slate-900/80 backdrop-blur-xl border border-violet-500/30 rounded-xl shadow-xl p-4 overflow-auto z-50">
+    <div class="flex justify-between items-center mb-2">
+      <h3 class="text-sm font-semibold text-violet-300">Preview</h3>
+      <button id="closePreview" class="text-slate-400 hover:text-white transition text-sm">✕</button>
+    </div>
+    <iframe id="previewFrame" class="w-full h-full bg-slate-950 rounded-lg border border-slate-800"></iframe>
+  </div>
+
+  <script>
+    let editor;
+    let currentFileHandle = null;
+    let currentFolderHandle = null;
+
+    const fileList = document.getElementById("fileList");
+    const currentFileLabel = document.getElementById("currentFile");
+    const positionEl = document.getElementById("position");
+    const languageEl = document.getElementById("language");
+
+    /* ---------------------------
+       MONACO SETUP
+    ----------------------------*/
+    require.config({
+      paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }
+    });
+
+    require(['vs/editor/editor.main'], function () {
+      editor = monaco.editor.create(document.getElementById('editor'), {
+        value: [
+          "// Droplet ++ Editor",
+          "// Press Ctrl+Shift+P or click Preview to toggle the preview bubble.",
+          "",
+          "function helloDroplet() {",
+          "  console.log('Hello from Droplet ++');",
+          "}",
+          "",
+          "helloDroplet();"
+        ].join("\n"),
+        language: "javascript",
+        theme: "vs-dark",
+        automaticLayout: true,
+        fontSize: 15,
+        minimap: { enabled: true },
+        smoothScrolling: true,
+        cursorSmoothCaretAnimation: "on"
+      });
+
+      editor.onDidChangeCursorPosition(e => {
+        positionEl.textContent = `Ln ${e.position.lineNumber}, Col ${e.position.column}`;
+      });
+    });
+
+    /* ---------------------------
+       FILE SYSTEM
+    ----------------------------*/
+    document.getElementById("openFolderBtn").onclick = async () => {
+      try {
+        currentFolderHandle = await window.showDirectoryPicker();
+        fileList.innerHTML = "";
+        await loadFolderFiles();
+      } catch (e) {}
+    };
+
+    async function loadFolderFiles() {
+      fileList.innerHTML = "";
+      for await (const entry of currentFolderHandle.values()) {
+        if (entry.kind === "file") {
+          const div = document.createElement("div");
+          div.className = "p-2 rounded-lg cursor-pointer hover:bg-slate-800 transition flex items-center gap-2";
+          div.textContent = entry.name;
+          div.onclick = () => openFile(entry);
+          fileList.appendChild(div);
+        }
+      }
+    }
+
+    async function openFile(fileHandle) {
+      currentFileHandle = fileHandle;
+      const file = await fileHandle.getFile();
+      const text = await file.text();
+
+      const ext = file.name.includes(".") ? file.name.split(".").pop().toLowerCase() : "";
+      const lang = detectLanguage(ext);
+
+      monaco.editor.setModelLanguage(editor.getModel(), lang);
+      languageEl.textContent = lang.charAt(0).toUpperCase() + lang.slice(1);
+
+      editor.setValue(text);
+      currentFileLabel.textContent = file.name;
+    }
+
+    function detectLanguage(ext) {
+      const map = {
+        js: "javascript",
+        ts: "typescript",
+        html: "html",
+        css: "css",
+        json: "json",
+        py: "python",
+        java: "java",
+        c: "c",
+        cpp: "cpp",
+        php: "php",
+        md: "markdown",
+        txt: "plaintext"
+      };
+      return map[ext] || "plaintext";
+    }
+
+    document.getElementById("saveFileBtn").onclick = async () => {
+      if (!currentFileHandle) return alert("No file open.");
+      const writable = await currentFileHandle.createWritable();
+      await writable.write(editor.getValue());
+      await writable.close();
+    };
+
+    document.getElementById("newFileBtn").onclick = async () => {
+      if (!currentFolderHandle) return alert("Open a folder first.");
+      const name = prompt("Enter file name (e.g., script.js):");
+      if (!name) return;
+      const newFileHandle = await currentFolderHandle.getFileHandle(name, { create: true });
+      currentFileHandle = newFileHandle;
+      editor.setValue("");
+      currentFileLabel.textContent = name;
+      await loadFolderFiles();
+    };
+
+    /* ---------------------------
+       PREVIEW BUBBLE
+    ----------------------------*/
+    const previewBubble = document.getElementById("previewBubble");
+    const previewFrame = document.getElementById("previewFrame");
+    const togglePreviewBtn = document.getElementById("togglePreviewBtn");
+    const closePreview = document.getElementById("closePreview");
+
+    function updatePreview() {
+      const code = editor.getValue();
+      const lang = languageEl.textContent.toLowerCase();
+
+      if (lang === "html") {
+        previewFrame.srcdoc = code;
+      } else if (lang === "markdown") {
+        previewFrame.srcdoc = `
+          <html>
+            <body style="background:#0f172a; color:white; font-family:Inter; padding:20px;">
+              ${marked.parse(code)}
+            </body>
+          </html>`;
+      } else {
+        previewFrame.srcdoc = `
+          <html>
+            <body style="background:#0f172a; color:white; font-family:Inter; padding:20px; white-space:pre;">
+              ${code.replace(/</g, "&lt;")}
+            </body>
+          </html>`;
+      }
+    }
+
+    function togglePreview() {
+      const hidden = previewBubble.classList.contains("hidden");
+      if (hidden) {
+        updatePreview();
+        previewBubble.classList.remove("hidden");
+      } else {
+        previewBubble.classList.add("hidden");
+      }
+    }
+
+    togglePreviewBtn.onclick = togglePreview;
+    closePreview.onclick = togglePreview;
+
+    editor?.onDidChangeModelContent(() => {
+      if (!previewBubble.classList.contains("hidden")) updatePreview();
+    });
+
+    // Keyboard shortcut: Ctrl+Shift+P
+    document.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        togglePreview();
+      }
+    });
+  </script>
+
+</body>
+</html>
