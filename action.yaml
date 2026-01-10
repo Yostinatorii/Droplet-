@@ -1,6 +1,2 @@
-name: 'My Action Name'
-description: 'A brief description of my action'
-# ... other fields
-branding:
-  icon: 'check'
-  color: 'blue'
+name: 'Droplet++'
+description: 'Droplet++ is a modern code editor.'
