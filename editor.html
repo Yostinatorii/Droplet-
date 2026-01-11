@@ -1,4 +1,5 @@
-<!DOCTYPE html>
+
+        <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -23,11 +24,9 @@
     .titlebar { background: linear-gradient(90deg, #6d28d9 0%, #db2777 100%); }
     .glass { background: var(--glass); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
     
-    /* Animation for Bubble */
     #previewBubble { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s; }
     #previewBubble.hidden { transform: translateY(20px) scale(0.95); opacity: 0; pointer-events: none; display: flex !important; }
 
-    /* Fullscreen Overlay */
     #fullscreenPreview.hidden { display: none; }
     
     #editor { height: 100%; width: 100%; }
@@ -121,17 +120,16 @@
 
   <script>
     /* ---------------------------------------------------------
-       STATE & VFS
+        STATE & VFS
     --------------------------------------------------------- */
     const State = {
-      files: {}, // VFS: { "index.html": "..." }
+      files: {},
       activeFile: 'index.html',
       previewFile: 'index.html',
       folderHandle: null,
       isSaving: false
     };
 
-    // Initialize VFS from LocalStorage or Defaults
     function initVFS() {
       const saved = localStorage.getItem('droplet_vfs');
       if (saved) {
@@ -140,9 +138,10 @@
         State.previewFile = localStorage.getItem('droplet_preview') || State.activeFile;
       } else {
         State.files = {
-          'index.html': '<html>\n<body>\n  <h1>Hello Droplet!</h1>\n  <script src="script.js"><\/script>\n</body>\n</html>',
+          'index.html': '<html>\n<body>\n  <h1>Home Page</h1>\n  <a href="about.html">Go to About Page</a>\n  <script src="script.js"><\/script>\n</body>\n</html>',
+          'about.html': '<html>\n<body>\n  <h1>About Page</h1>\n  <p>This navigation works via VFS!</p>\n  <a href="index.html">Back Home</a>\n</body>\n</html>',
           'styles.css': 'body { background: #f0fdf4; font-family: sans-serif; padding: 2rem; }',
-          'script.js': 'console.log("Script loaded!");\ndocument.body.innerHTML += "<p>VFS Sync active.</p>";'
+          'script.js': 'console.log("Script loaded!");'
         };
       }
       refreshFileList();
@@ -157,7 +156,7 @@
     }
 
     /* ---------------------------------------------------------
-       MONACO CONFIG
+        MONACO CONFIG
     --------------------------------------------------------- */
     let editor;
     require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
@@ -178,7 +177,6 @@
         cursorSmoothCaretAnimation: "on"
       });
 
-      // Events
       editor.onDidChangeModelContent(() => {
         State.files[State.activeFile] = editor.getValue();
         document.getElementById('saveStatus').textContent = "Unsaved changes...";
@@ -189,7 +187,6 @@
         document.getElementById('posLabel').textContent = `Ln ${e.position.lineNumber}, Col ${e.position.column}`;
       });
 
-      // Ctrl+S Shortcut
       window.addEventListener('keydown', e => {
         if ((e.ctrlKey || e.metaKey) && e.key === 's') {
           e.preventDefault();
@@ -201,7 +198,7 @@
     });
 
     /* ---------------------------------------------------------
-       PREVIEW ENGINE (THE CORE)
+        PREVIEW ENGINE & LINK INTERCEPTION
     --------------------------------------------------------- */
     async function getPreviewHTML(filename) {
       const content = State.files[filename] || "";
@@ -209,7 +206,8 @@
 
       if (ext === 'html') {
         let doc = content;
-        // Inject CSS VFS
+        
+        // 1. Inject CSS/JS into the HTML string
         for (const [name, code] of Object.entries(State.files)) {
           if (name.endsWith('.css')) {
             doc = doc.replace(new RegExp(`<link[^>]*href=["']${name}["'][^>]*>`, 'g'), `<style>${code}</style>`);
@@ -217,31 +215,54 @@
           if (name.endsWith('.js')) {
             doc = doc.replace(new RegExp(`<script[^>]*src=["']${name}["'][^>]*><\/script>`, 'g'), `<script>${code}<\/script>`);
           }
-          if (name.endsWith('.ts')) {
-            const js = ts.transpile(code);
-            doc = doc.replace(new RegExp(`<script[^>]*src=["']${name}["'][^>]*><\/script>`, 'g'), `<script>${js}<\/script>`);
-          }
         }
+
+        // 2. The Bridge Script: Intercepts clicks and tells the parent to change files
+        const bridgeScript = `
+          <script>
+            document.addEventListener('click', e => {
+              const link = e.target.closest('a');
+              if (link) {
+                const href = link.getAttribute('href');
+                // Only intercept internal relative links
+                if (href && !href.startsWith('http') && !href.startsWith('//') && !href.startsWith('#')) {
+                  e.preventDefault();
+                  window.parent.postMessage({ type: 'VFS_NAVIGATE', target: href }, '*');
+                }
+              }
+            });
+          <\/script>
+        `;
+
+        // Inject bridge script before closing body
+        if (doc.includes('</body>')) {
+          doc = doc.replace('</body>', bridgeScript + '</body>');
+        } else {
+          doc += bridgeScript;
+        }
+        
         return doc;
       }
 
-      if (ext === 'md') return `<html><body class="markdown-body" style="padding:20px; background:#fff; color:#000;">${marked.parse(content)}<style>body{font-family:sans-serif;}</style></body></html>`;
+      if (ext === 'md') return `<html><body style="padding:20px; font-family:sans-serif;">${marked.parse(content)}</body></html>`;
+      if (ext === 'ts') return `<html><body style="background:#1e1e1e; color:#ddd; padding:20px;"><pre>${ts.transpile(content)}</pre></body></html>`;
       
-      if (ext === 'ts') {
-        const compiled = ts.transpile(content);
-        return `<html><body style="background:#1e1e1e; color:#d4d4d4; padding:20px;"><pre>// Compiled JS:\n\n${compiled}</pre></body></html>`;
-      }
-
-      if (ext === 'json') {
-        try {
-          const obj = JSON.parse(content);
-          return `<html><body style="background:#fff; padding:20px;"><pre>${JSON.stringify(obj, null, 2)}</pre></body></html>`;
-        } catch(e) { return `<html><body>Invalid JSON</body></html>`; }
-      }
-
-      // Default: Text wrap
       return `<html><body style="white-space:pre; font-family:monospace; padding:20px; background:#1e1e1e; color:#d4d4d4;">${content.replace(/</g, "&lt;")}</body></html>`;
     }
+
+    // Listen for navigation messages from the IFrames
+    window.addEventListener('message', (event) => {
+      if (event.data.type === 'VFS_NAVIGATE') {
+        const target = event.data.target;
+        if (State.files[target]) {
+          State.previewFile = target;
+          syncPreviewDropdowns();
+          autoRefreshPreviews();
+        } else {
+          alert("File not found in explorer: " + target);
+        }
+      }
+    });
 
     async function autoRefreshPreviews() {
       const html = await getPreviewHTML(State.previewFile);
@@ -258,7 +279,7 @@
     }
 
     /* ---------------------------------------------------------
-       UI HANDLERS
+        UI & DISK HANDLERS
     --------------------------------------------------------- */
     function openFile(name) {
       State.activeFile = name;
@@ -279,10 +300,7 @@
       Object.keys(State.files).forEach(name => {
         const div = document.createElement('div');
         div.className = `file-item px-4 py-2 text-xs cursor-pointer flex items-center gap-2 hover:bg-white/5 transition ${State.activeFile === name ? 'active' : ''}`;
-        div.innerHTML = `
-          <svg class="w-3 h-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
-          ${name}
-        `;
+        div.innerHTML = `<svg class="w-3 h-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>${name}`;
         div.onclick = () => openFile(name);
         list.appendChild(div);
       });
@@ -302,7 +320,6 @@
         sel.onchange = (e) => {
           State.previewFile = e.target.value;
           autoRefreshPreviews();
-          // Sync other select
           selects.forEach(s => s.value = e.target.value);
         };
       });
@@ -314,9 +331,6 @@
       return map[ext] || 'plaintext';
     }
 
-    /* ---------------------------------------------------------
-       DISK ACCESS (FILE SYSTEM ACCESS API)
-    --------------------------------------------------------- */
     document.getElementById('openFolderBtn').onclick = async () => {
       try {
         State.folderHandle = await window.showDirectoryPicker();
@@ -336,7 +350,7 @@
     async function saveToDisk() {
       if (!State.folderHandle) {
         saveVFS();
-        alert("Saved to local browser storage. Open a folder to save to real disk.");
+        alert("Saved to local browser storage.");
         return;
       }
       try {
@@ -357,15 +371,11 @@
       }
     };
 
-    /* ---------------------------------------------------------
-       TOGGLES
-    --------------------------------------------------------- */
     document.getElementById('togglePreviewBtn').onclick = () => {
       document.getElementById('previewBubble').classList.toggle('hidden');
       autoRefreshPreviews();
     };
     document.getElementById('closeBubble').onclick = () => document.getElementById('previewBubble').classList.add('hidden');
-    
     document.getElementById('fullscreenBtn').onclick = () => {
       document.getElementById('fullscreenPreview').classList.remove('hidden');
       autoRefreshPreviews();
