@@ -19,13 +19,15 @@
     #editor { height: 100%; width: 100%; }
     .file-item.active { background: rgba(124, 58, 237, 0.2); border-left: 3px solid #a78bfa; }
     
-    /* Media Preview Overlay */
     #mediaPreview { display: none; position: absolute; inset: 0; background: #0f172a; z-index: 20; align-items: center; justify-content: center; flex-direction: column; }
-    
-    /* Context Menu */
     #contextMenu { display: none; position: fixed; z-index: 1000; width: 150px; background: #1e293b; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); border-radius: 6px; padding: 4px; }
     .menu-item { padding: 8px 12px; font-size: 12px; cursor: pointer; border-radius: 4px; }
     .menu-item:hover { background: #4f46e5; }
+    
+    /* Drag & Drop Visual Feedback */
+    #fileList.drag-over { background: rgba(124, 58, 237, 0.1); outline: 2px dashed #7c3aed; outline-offset: -4px; }
+    
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
@@ -52,9 +54,10 @@
       <div class="w-64 glass flex flex-col shrink-0 border-r border-white/5">
         <div class="p-4 flex items-center justify-between border-b border-white/5">
           <span class="text-xs font-semibold uppercase text-slate-400">Explorer</span>
-          <button id="newFileBtn" class="p-1 hover:bg-white/10 rounded"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg></button>
+          <button id="newFileBtn" class="p-1 hover:bg-white/10 rounded" title="New Text File"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg></button>
         </div>
-        <div id="fileList" class="flex-1 overflow-y-auto py-2"></div>
+        <div id="fileList" class="flex-1 overflow-y-auto py-2 transition-all duration-200"></div>
+        <div class="p-2 text-[10px] text-center opacity-40 border-t border-white/5">Drag & Drop files here</div>
       </div>
 
       <div class="flex-1 flex flex-col min-w-0">
@@ -64,8 +67,9 @@
             <button id="saveFileBtn" class="px-3 py-1.5 text-xs bg-violet-600 hover:bg-violet-500 rounded-md">Save (Ctrl+S)</button>
           </div>
           <div class="flex items-center gap-3">
-            <select id="previewSelect" class="bg-slate-800 text-xs border border-white/10 rounded px-2 py-1 outline-none"></select>
-            <button id="togglePreviewBtn" class="p-2 hover:bg-white/10 rounded-full"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
+            <select id="previewSelect" class="bg-slate-800 text-xs border border-white/10 rounded px-2 py-1 outline-none w-32"></select>
+            <button id="togglePreviewBtn" class="p-2 hover:bg-white/10 rounded-full" title="Toggle Bubble"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
+            <button id="fullscreenBtn" class="p-2 hover:bg-white/10 rounded-full" title="Fullscreen"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg></button>
           </div>
         </div>
 
@@ -87,15 +91,27 @@
 
   <div id="previewBubble" class="hidden fixed bottom-12 right-6 w-[450px] h-[350px] glass rounded-2xl shadow-2xl flex flex-col overflow-hidden z-40">
     <div class="h-10 bg-white/5 flex items-center justify-between px-4">
-      <span class="text-[11px] font-bold uppercase tracking-widest opacity-70">Live Web View</span>
+      <span class="text-[11px] font-bold uppercase tracking-widest opacity-70">Live Bubble</span>
       <button id="closeBubble" class="text-lg opacity-50 hover:opacity-100">×</button>
     </div>
     <iframe id="bubbleFrame" class="w-full flex-1 bg-white" sandbox="allow-scripts allow-same-origin"></iframe>
   </div>
 
+  <div id="fullscreenPreview" class="hidden fixed inset-0 bg-slate-950 z-[100] flex flex-col">
+    <div class="h-14 bg-slate-900 border-b border-white/10 flex items-center px-6 gap-6">
+      <button id="backToEditor" class="flex items-center gap-2 text-sm hover:text-violet-400 transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+        Back to Editor
+      </button>
+      <div class="h-6 w-px bg-white/10"></div>
+      <select id="fullPreviewSelect" class="bg-slate-800 text-xs border border-white/10 rounded px-3 py-1.5 outline-none w-48"></select>
+    </div>
+    <iframe id="fullFrame" class="w-full flex-1 bg-white" sandbox="allow-scripts allow-same-origin"></iframe>
+  </div>
+
   <script>
     const State = {
-      files: {}, // name: { content: string, isBinary: bool, blobUrl: string }
+      files: {}, 
       activeFile: null,
       previewFile: null,
       folderHandle: null,
@@ -104,7 +120,6 @@
 
     let editor;
 
-    /* --- INITIALIZATION --- */
     require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
     require(['vs/editor/editor.main'], function () {
       editor = monaco.editor.create(document.getElementById('editor'), {
@@ -117,46 +132,75 @@
       editor.onDidChangeModelContent(() => {
         if (State.activeFile && !State.files[State.activeFile].isBinary) {
           State.files[State.activeFile].content = editor.getValue();
-          document.getElementById('saveStatus').textContent = "Unsaved changes...";
+          updateLivePreviews();
         }
       });
-
-      // Load Default VFS
       loadDefaults();
+      initDragAndDrop();
     });
 
     function loadDefaults() {
-      State.files = {
-        'index.html': { content: '<h1>Hello Droplet</h1>', isBinary: false },
-        'styles.css': { content: 'body { background: #111; color: white; }', isBinary: false }
-      };
+      State.files = { 'index.html': { content: '<h1>Drop images/audio here!</h1>', isBinary: false } };
+      State.previewFile = 'index.html';
       openFile('index.html');
       refreshFileList();
       syncPreviewDropdowns();
     }
 
-    /* --- FILE SYSTEM LOGIC --- */
-    function getExt(name) { return name.split('.').pop().toLowerCase(); }
+    /* --- DRAG AND DROP LOGIC --- */
+    function initDragAndDrop() {
+      const dropZone = document.getElementById('fileList');
 
-    function isMedia(name) {
-      return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp3', 'wav', 'mp4', 'webm'].includes(getExt(name));
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('drag-over');
+      });
+
+      dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('drag-over');
+      });
+
+      dropZone.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('drag-over');
+        
+        const droppedFiles = Array.from(e.dataTransfer.files);
+        
+        for (const file of droppedFiles) {
+          if (isMedia(file.name)) {
+            State.files[file.name] = {
+              isBinary: true,
+              blobUrl: URL.createObjectURL(file)
+            };
+          } else {
+            State.files[file.name] = {
+              isBinary: false,
+              content: await file.text()
+            };
+          }
+        }
+        
+        refreshFileList();
+        syncPreviewDropdowns();
+        if (droppedFiles.length > 0) openFile(droppedFiles[0].name);
+      });
     }
 
-    async function openFile(name) {
+    function getExt(name) { return name.split('.').pop().toLowerCase(); }
+    function isMedia(name) { return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'mp3', 'wav', 'mp4', 'webm'].includes(getExt(name)); }
+
+    function openFile(name) {
       if (!State.files[name]) return;
       State.activeFile = name;
-      
       const fileData = State.files[name];
       const mediaContainer = document.getElementById('mediaPreview');
       const editorElement = document.getElementById('editor');
 
       if (fileData.isBinary) {
-        // Show Media Preview
         editorElement.style.visibility = 'hidden';
         mediaContainer.style.display = 'flex';
         renderMedia(name, fileData);
       } else {
-        // Show Code Editor
         editorElement.style.visibility = 'visible';
         mediaContainer.style.display = 'none';
         editor.setValue(fileData.content);
@@ -172,17 +216,12 @@
       const ext = getExt(name);
       const container = document.getElementById('mediaPreview');
       container.innerHTML = '';
-      
       if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
-        container.innerHTML = `<img src="${data.blobUrl}" class="max-w-full max-h-full object-contain shadow-2xl">`;
+        container.innerHTML = `<img src="${data.blobUrl}" class="max-w-[90%] max-h-[90%] object-contain shadow-2xl rounded-lg">`;
       } else if (['mp4', 'webm'].includes(ext)) {
-        container.innerHTML = `<video controls src="${data.blobUrl}" class="max-w-full max-h-full"></video>`;
+        container.innerHTML = `<video controls src="${data.blobUrl}" class="max-w-[90%] max-h-[90%] rounded-lg"></video>`;
       } else if (['mp3', 'wav'].includes(ext)) {
-        container.innerHTML = `
-          <div class="text-center">
-            <div class="mb-4 text-violet-400">Audio Playback</div>
-            <audio controls src="${data.blobUrl}"></audio>
-          </div>`;
+        container.innerHTML = `<div class="p-8 bg-slate-800 rounded-3xl border border-white/10 text-center"><div class="mb-4 text-violet-400 font-bold">${name}</div><audio controls src="${data.blobUrl}"></audio></div>`;
       }
     }
 
@@ -192,52 +231,66 @@
       Object.keys(State.files).sort().forEach(name => {
         const div = document.createElement('div');
         div.className = `file-item px-4 py-2 text-xs cursor-pointer flex items-center gap-2 hover:bg-white/5 transition ${State.activeFile === name ? 'active' : ''}`;
-        div.innerHTML = `<svg class="w-3 h-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg> <span>${name}</span>`;
         
+        const icon = State.files[name].isBinary ? 
+          `<svg class="w-3 h-3 text-amber-400" fill="currentColor" viewBox="0 0 20 20"><path d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z"/></svg>` : 
+          `<svg class="w-3 h-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>`;
+        
+        div.innerHTML = `${icon} <span>${name}</span>`;
         div.onclick = () => openFile(name);
-        div.oncontextmenu = (e) => {
-          e.preventDefault();
-          showContextMenu(e, name);
-        };
+        div.oncontextmenu = (e) => { e.preventDefault(); showContextMenu(e, name); };
         list.appendChild(div);
       });
     }
 
-    /* --- FOLDER ACCESS (CLEARS SIDEBAR) --- */
+    function syncPreviewDropdowns() {
+      const selects = [document.getElementById('previewSelect'), document.getElementById('fullPreviewSelect')];
+      selects.forEach(sel => {
+        sel.innerHTML = '';
+        Object.keys(State.files).forEach(name => {
+          if (!State.files[name].isBinary) {
+            const opt = document.createElement('option');
+            opt.value = name; opt.textContent = name;
+            if (name === State.previewFile) opt.selected = true;
+            sel.appendChild(opt);
+          }
+        });
+        sel.onchange = (e) => {
+          State.previewFile = e.target.value;
+          selects.forEach(s => s.value = State.previewFile);
+          updateLivePreviews();
+        };
+      });
+    }
+
+    function updateLivePreviews() {
+      if (!State.previewFile || !State.files[State.previewFile]) return;
+      document.getElementById('bubbleFrame').srcdoc = State.files[State.previewFile].content;
+      document.getElementById('fullFrame').srcdoc = State.files[State.previewFile].content;
+    }
+
     document.getElementById('openFolderBtn').onclick = async () => {
       try {
         const handle = await window.showDirectoryPicker();
         State.folderHandle = handle;
-        
-        // CLEAR PREVIOUS STATE
         State.files = {};
-        
         for await (const entry of handle.values()) {
           if (entry.kind === 'file') {
             const file = await entry.getFile();
             if (isMedia(entry.name)) {
-              State.files[entry.name] = { 
-                isBinary: true, 
-                blobUrl: URL.createObjectURL(file) 
-              };
+              State.files[entry.name] = { isBinary: true, blobUrl: URL.createObjectURL(file) };
             } else {
-              State.files[entry.name] = { 
-                isBinary: false, 
-                content: await file.text() 
-              };
+              State.files[entry.name] = { isBinary: false, content: await file.text() };
             }
           }
         }
-        
         const first = Object.keys(State.files)[0];
         if (first) openFile(first);
         refreshFileList();
         syncPreviewDropdowns();
-        document.getElementById('saveStatus').textContent = "Folder Loaded";
-      } catch(e) { console.warn("Picker closed"); }
+      } catch(e) { console.warn(e); }
     };
 
-    /* --- CONTEXT MENU ACTIONS --- */
     const ctx = document.getElementById('contextMenu');
     function showContextMenu(e, filename) {
       State.rightClickedFile = filename;
@@ -245,71 +298,52 @@
       ctx.style.left = e.pageX + 'px';
       ctx.style.top = e.pageY + 'px';
     }
-
     window.onclick = () => ctx.style.display = 'none';
 
     window.renameCurrentFile = () => {
       const oldName = State.rightClickedFile;
-      const newName = prompt("New filename:", oldName);
+      const newName = prompt("Rename to:", oldName);
       if (newName && newName !== oldName) {
         State.files[newName] = State.files[oldName];
         delete State.files[oldName];
         if (State.activeFile === oldName) State.activeFile = newName;
         refreshFileList();
+        syncPreviewDropdowns();
       }
     };
 
     window.deleteCurrentFile = () => {
       if (confirm(`Delete ${State.rightClickedFile}?`)) {
         delete State.files[State.rightClickedFile];
-        if (State.activeFile === State.rightClickedFile) {
-          State.activeFile = Object.keys(State.files)[0] || null;
-          if (State.activeFile) openFile(State.activeFile);
-        }
+        if (State.activeFile === State.rightClickedFile) State.activeFile = Object.keys(State.files)[0] || null;
         refreshFileList();
+        syncPreviewDropdowns();
       }
     };
 
-    /* --- UTILS --- */
     function getLangFromExt(file) {
       const ext = getExt(file);
       const map = { js:'javascript', html:'html', css:'css', py:'python', json:'json', md:'markdown' };
       return map[ext] || 'plaintext';
     }
 
-    function syncPreviewDropdowns() {
-      const sel = document.getElementById('previewSelect');
-      sel.innerHTML = '';
-      Object.keys(State.files).forEach(name => {
-        if (!State.files[name].isBinary) {
-          const opt = document.createElement('option');
-          opt.value = name; opt.textContent = name;
-          sel.appendChild(opt);
-        }
-      });
-    }
-
+    document.getElementById('togglePreviewBtn').onclick = () => document.getElementById('previewBubble').classList.toggle('hidden');
+    document.getElementById('fullscreenBtn').onclick = () => {
+      document.getElementById('fullscreenPreview').classList.remove('hidden');
+      updateLivePreviews();
+    };
+    document.getElementById('backToEditor').onclick = () => document.getElementById('fullscreenPreview').classList.add('hidden');
+    document.getElementById('closeBubble').onclick = () => document.getElementById('previewBubble').classList.add('hidden');
+    
     document.getElementById('newFileBtn').onclick = () => {
       const name = prompt("Filename:");
       if (name) {
         State.files[name] = { content: "", isBinary: false };
         openFile(name);
         refreshFileList();
+        syncPreviewDropdowns();
       }
     };
-
-    // Toggle Preview Bubble
-    document.getElementById('togglePreviewBtn').onclick = async () => {
-      const bubble = document.getElementById('previewBubble');
-      const frame = document.getElementById('bubbleFrame');
-      bubble.classList.toggle('hidden');
-      if (!bubble.classList.contains('hidden')) {
-        const active = document.getElementById('previewSelect').value || State.activeFile;
-        if (State.files[active]) frame.srcdoc = State.files[active].content;
-      }
-    };
-    
-    document.getElementById('closeBubble').onclick = () => document.getElementById('previewBubble').classList.add('hidden');
   </script>
 </body>
 </html>
