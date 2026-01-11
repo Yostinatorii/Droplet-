@@ -4,37 +4,38 @@
   <meta charset="UTF-8" />
   <title>Droplet ++ — Professional IDE</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
   <script src="https://cdn.tailwindcss.com"></script>
-
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
-
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://unpkg.com/typescript@latest/lib/typescriptServices.js"></script>
 
   <style>
-    :root { --glass: rgba(15, 23, 42, 0.8); }
+    :root { --glass: rgba(15, 23, 42, 0.9); }
     * { font-family: 'Inter', sans-serif; }
     .mono { font-family: 'Fira Code', monospace; }
-    
     body { background-color: #020617; overflow: hidden; height: 100vh; }
-    
     .titlebar { background: linear-gradient(90deg, #6d28d9 0%, #db2777 100%); }
     .glass { background: var(--glass); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
-    
     #previewBubble { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s; }
     #previewBubble.hidden { transform: translateY(20px) scale(0.95); opacity: 0; pointer-events: none; display: flex !important; }
-
-    #fullscreenPreview.hidden { display: none; }
-    
     #editor { height: 100%; width: 100%; }
     .file-item.active { background: rgba(124, 58, 237, 0.2); border-left: 3px solid #a78bfa; }
+    
+    /* Context Menu Styles */
+    #contextMenu { display: none; position: fixed; z-index: 1000; width: 150px; background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); }
+    .menu-item { padding: 8px 12px; font-size: 12px; cursor: pointer; transition: background 0.2s; }
+    .menu-item:hover { background: #4c1d95; }
   </style>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 </head>
 <body class="text-slate-200">
+
+  <div id="contextMenu">
+    <div class="menu-item" onclick="renameActiveFile()">Rename</div>
+    <div class="menu-item text-red-400" onclick="deleteActiveFile()">Delete</div>
+  </div>
 
   <div class="fixed inset-0 -z-10 overflow-hidden">
     <div class="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:40px_40px]"></div>
@@ -51,7 +52,7 @@
         </div>
         <span class="ml-4 text-xs font-bold tracking-widest uppercase opacity-90">Droplet ++ IDE</span>
       </div>
-      <div id="saveStatus" class="text-[10px] uppercase tracking-tighter opacity-60">All changes saved</div>
+      <div id="saveStatus" class="text-[10px] uppercase tracking-tighter opacity-60">No folder opened</div>
     </div>
 
     <div class="flex flex-1 overflow-hidden">
@@ -62,23 +63,18 @@
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
           </button>
         </div>
-        <div id="fileList" class="flex-1 overflow-y-auto py-2 custom-scrollbar"></div>
+        <div id="fileList" class="flex-1 overflow-y-auto py-2"></div>
       </div>
 
       <div class="flex-1 flex flex-col min-w-0">
         <div class="h-12 bg-slate-900/40 border-b border-white/5 flex items-center justify-between px-4">
           <div class="flex items-center gap-2">
-            <button id="openFolderBtn" class="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 rounded-md transition border border-white/5">Open Folder</button>
-            <button id="saveFileBtn" class="px-3 py-1.5 text-xs bg-violet-600 hover:bg-violet-500 rounded-md transition">Save (Ctrl+S)</button>
+            <button id="openFolderBtn" class="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 rounded-md transition border border-white/5">Open Local Project</button>
           </div>
           <div class="flex items-center gap-3">
             <select id="previewSelect" class="bg-slate-800 text-xs border border-white/10 rounded px-2 py-1 outline-none"></select>
-            <button id="togglePreviewBtn" class="p-2 hover:bg-white/10 rounded-full transition" title="Toggle Bubble Preview">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-            </button>
-            <button id="fullscreenBtn" class="p-2 hover:bg-white/10 rounded-full transition" title="Fullscreen Preview">
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
-            </button>
+            <button id="togglePreviewBtn" class="p-2 hover:bg-white/10 rounded-full transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
+            <button id="fullscreenBtn" class="p-2 hover:bg-white/10 rounded-full transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg></button>
           </div>
         </div>
 
@@ -89,16 +85,16 @@
         <div class="h-8 bg-slate-950/80 border-t border-white/5 flex items-center justify-between px-4 text-[11px] text-slate-400">
           <div class="flex gap-4">
             <span id="posLabel">Ln 1, Col 1</span>
-            <span id="fileLabel" class="text-violet-400">no_file.txt</span>
+            <span id="fileLabel" class="text-violet-400">Open a folder to start</span>
           </div>
-          <span id="langLabel" class="uppercase font-medium tracking-widest text-violet-300">Plain Text</span>
+          <span id="langLabel" class="uppercase font-medium tracking-widest text-violet-300">---</span>
         </div>
       </div>
     </div>
   </div>
 
   <div id="previewBubble" class="hidden fixed bottom-12 right-6 w-[450px] h-[350px] glass rounded-2xl shadow-2xl flex-col overflow-hidden z-40">
-    <div class="h-10 bg-white/5 flex items-center justify-between px-4 shrink-0">
+    <div class="h-10 bg-white/5 flex items-center justify-between px-4">
       <span class="text-[11px] font-bold uppercase tracking-widest opacity-70">Live Preview</span>
       <button id="closeBubble" class="text-lg opacity-50 hover:opacity-100">×</button>
     </div>
@@ -108,201 +104,208 @@
   <div id="fullscreenPreview" class="hidden fixed inset-0 bg-slate-950 z-[100] flex flex-col">
     <div class="h-14 bg-slate-900 border-b border-white/10 flex items-center px-6 gap-6">
       <button id="backToEditor" class="flex items-center gap-2 text-sm hover:text-violet-400 transition">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
-        Back to Editor
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg> Back to Editor
       </button>
-      <div class="h-6 w-px bg-white/10"></div>
       <select id="fullPreviewSelect" class="bg-slate-800 text-xs border border-white/10 rounded px-3 py-1.5 outline-none w-48"></select>
     </div>
     <iframe id="fullFrame" class="w-full flex-1 bg-white" sandbox="allow-scripts allow-same-origin"></iframe>
   </div>
 
   <script>
-    /* ---------------------------------------------------------
-        STATE & VFS
-    --------------------------------------------------------- */
     const State = {
       files: {},
-      activeFile: 'index.html',
-      previewFile: 'index.html',
+      activeFile: null,
+      previewFile: null,
       folderHandle: null,
-      isSaving: false
+      saveTimeout: null,
+      contextTarget: null
     };
 
-    function initVFS() {
-      const saved = localStorage.getItem('droplet_vfs');
-      if (saved) {
-        State.files = JSON.parse(saved);
-        State.activeFile = localStorage.getItem('droplet_active') || Object.keys(State.files)[0];
-        State.previewFile = localStorage.getItem('droplet_preview') || State.activeFile;
-      } else {
-        State.files = {
-          'index.html': '<html>\n<body>\n  <h1>Home Page</h1>\n  <a href="about.html">Go to About Page</a>\n  <script src="script.js"><\/script>\n</body>\n</html>',
-          'about.html': '<html>\n<body>\n  <h1>About Page</h1>\n  <p>This navigation works via VFS!</p>\n  <a href="index.html">Back Home</a>\n</body>\n</html>',
-          'styles.css': 'body { background: #f0fdf4; font-family: sans-serif; padding: 2rem; }',
-          'script.js': 'console.log("Script loaded!");'
-        };
-      }
-      refreshFileList();
-      syncPreviewDropdowns();
-    }
-
-    function saveVFS() {
-      localStorage.setItem('droplet_vfs', JSON.stringify(State.files));
-      localStorage.setItem('droplet_active', State.activeFile);
-      localStorage.setItem('droplet_preview', State.previewFile);
-      document.getElementById('saveStatus').textContent = "All changes saved";
-    }
-
-    /* ---------------------------------------------------------
-        MONACO CONFIG
-    --------------------------------------------------------- */
     let editor;
     require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
 
     require(['vs/editor/editor.main'], function () {
-      initVFS();
-      
       editor = monaco.editor.create(document.getElementById('editor'), {
-        value: State.files[State.activeFile] || "",
-        language: getLangFromExt(State.activeFile),
+        value: "Select 'Open Local Project' to begin.\nYour changes will autosave directly to your folder.",
+        language: 'plaintext',
         theme: 'vs-dark',
         automaticLayout: true,
         fontSize: 14,
         fontFamily: 'Fira Code',
         minimap: { enabled: false },
-        padding: { top: 20 },
-        smoothScrolling: true,
-        cursorSmoothCaretAnimation: "on"
+        padding: { top: 20 }
       });
 
       editor.onDidChangeModelContent(() => {
+        if (!State.activeFile) return;
         State.files[State.activeFile] = editor.getValue();
-        document.getElementById('saveStatus').textContent = "Unsaved changes...";
+        document.getElementById('saveStatus').textContent = "Typing...";
+        
+        // Autosave logic (debounce 500ms)
+        clearTimeout(State.saveTimeout);
+        State.saveTimeout = setTimeout(saveToDisk, 500);
         autoRefreshPreviews();
       });
 
       editor.onDidChangeCursorPosition(e => {
         document.getElementById('posLabel').textContent = `Ln ${e.position.lineNumber}, Col ${e.position.column}`;
       });
-
-      window.addEventListener('keydown', e => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-          e.preventDefault();
-          saveToDisk();
-        }
-      });
-      
-      openFile(State.activeFile);
     });
 
-    /* ---------------------------------------------------------
-        PREVIEW ENGINE & LINK INTERCEPTION
-    --------------------------------------------------------- */
-    async function getPreviewHTML(filename) {
-      const content = State.files[filename] || "";
-      const ext = filename.split('.').pop().toLowerCase();
+    /* --- File System Operations --- */
+    
+    async function saveToDisk() {
+      if (!State.folderHandle || !State.activeFile) return;
+      try {
+        const handle = await State.folderHandle.getFileHandle(State.activeFile, { create: true });
+        const writable = await handle.createWritable();
+        await writable.write(State.files[State.activeFile]);
+        await writable.close();
+        document.getElementById('saveStatus').textContent = "Saved to Disk";
+      } catch(e) { 
+        document.getElementById('saveStatus').textContent = "Save Error";
+      }
+    }
 
-      if (ext === 'html') {
-        let doc = content;
+    async function renameActiveFile() {
+      const oldName = State.contextTarget;
+      const newName = prompt("Rename " + oldName + " to:", oldName);
+      if (!newName || newName === oldName) return;
+
+      try {
+        // Create new file with old content
+        const newHandle = await State.folderHandle.getFileHandle(newName, { create: true });
+        const writable = await newHandle.createWritable();
+        await writable.write(State.files[oldName]);
+        await writable.close();
+
+        // Delete old file
+        await State.folderHandle.removeEntry(oldName);
         
-        // 1. Inject CSS/JS into the HTML string
-        for (const [name, code] of Object.entries(State.files)) {
-          if (name.endsWith('.css')) {
-            doc = doc.replace(new RegExp(`<link[^>]*href=["']${name}["'][^>]*>`, 'g'), `<style>${code}</style>`);
-          }
-          if (name.endsWith('.js')) {
-            doc = doc.replace(new RegExp(`<script[^>]*src=["']${name}["'][^>]*><\/script>`, 'g'), `<script>${code}<\/script>`);
-          }
-        }
+        // Update State
+        State.files[newName] = State.files[oldName];
+        delete State.files[oldName];
+        
+        if (State.activeFile === oldName) State.activeFile = newName;
+        if (State.previewFile === oldName) State.previewFile = newName;
 
-        // 2. The Bridge Script: Intercepts clicks and tells the parent to change files
-        const bridgeScript = `
-          <script>
-            document.addEventListener('click', e => {
-              const link = e.target.closest('a');
-              if (link) {
-                const href = link.getAttribute('href');
-                // Only intercept internal relative links
-                if (href && !href.startsWith('http') && !href.startsWith('//') && !href.startsWith('#')) {
-                  e.preventDefault();
-                  window.parent.postMessage({ type: 'VFS_NAVIGATE', target: href }, '*');
-                }
-              }
-            });
-          <\/script>
-        `;
+        refreshFileList();
+        syncPreviewDropdowns();
+        openFile(State.activeFile);
+      } catch (e) { alert("Error renaming file."); }
+      hideContextMenu();
+    }
 
-        // Inject bridge script before closing body
-        if (doc.includes('</body>')) {
-          doc = doc.replace('</body>', bridgeScript + '</body>');
-        } else {
-          doc += bridgeScript;
+    async function deleteActiveFile() {
+      const name = State.contextTarget;
+      if (!confirm(`Are you sure you want to delete ${name}?`)) return;
+
+      try {
+        await State.folderHandle.removeEntry(name);
+        delete State.files[name];
+        
+        const remaining = Object.keys(State.files);
+        if (State.activeFile === name) {
+          if (remaining.length > 0) openFile(remaining[0]);
+          else {
+            State.activeFile = null;
+            editor.setValue("");
+          }
         }
         
-        return doc;
-      }
-
-      if (ext === 'md') return `<html><body style="padding:20px; font-family:sans-serif;">${marked.parse(content)}</body></html>`;
-      if (ext === 'ts') return `<html><body style="background:#1e1e1e; color:#ddd; padding:20px;"><pre>${ts.transpile(content)}</pre></body></html>`;
-      
-      return `<html><body style="white-space:pre; font-family:monospace; padding:20px; background:#1e1e1e; color:#d4d4d4;">${content.replace(/</g, "&lt;")}</body></html>`;
+        refreshFileList();
+        syncPreviewDropdowns();
+      } catch (e) { alert("Error deleting file."); }
+      hideContextMenu();
     }
 
-    // Listen for navigation messages from the IFrames
-    window.addEventListener('message', (event) => {
-      if (event.data.type === 'VFS_NAVIGATE') {
-        const target = event.data.target;
-        if (State.files[target]) {
-          State.previewFile = target;
-          syncPreviewDropdowns();
-          autoRefreshPreviews();
-        } else {
-          alert("File not found in explorer: " + target);
-        }
-      }
-    });
-
-    async function autoRefreshPreviews() {
-      const html = await getPreviewHTML(State.previewFile);
-      const bubble = document.getElementById('bubbleFrame');
-      const full = document.getElementById('fullFrame');
-      
-      if (!document.getElementById('previewBubble').classList.contains('hidden')) {
-        bubble.srcdoc = html;
-      }
-      if (!document.getElementById('fullscreenPreview').classList.contains('hidden')) {
-        full.srcdoc = html;
-      }
-      saveVFS();
-    }
-
-    /* ---------------------------------------------------------
-        UI & DISK HANDLERS
-    --------------------------------------------------------- */
-    function openFile(name) {
-      State.activeFile = name;
-      const lang = getLangFromExt(name);
-      monaco.editor.setModelLanguage(editor.getModel(), lang);
-      editor.setValue(State.files[name] || "");
-      
-      document.getElementById('fileLabel').textContent = name;
-      document.getElementById('langLabel').textContent = lang;
-      
-      refreshFileList();
-      saveVFS();
-    }
+    /* --- UI Functions --- */
 
     function refreshFileList() {
       const list = document.getElementById('fileList');
       list.innerHTML = '';
-      Object.keys(State.files).forEach(name => {
+      Object.keys(State.files).sort().forEach(name => {
         const div = document.createElement('div');
         div.className = `file-item px-4 py-2 text-xs cursor-pointer flex items-center gap-2 hover:bg-white/5 transition ${State.activeFile === name ? 'active' : ''}`;
         div.innerHTML = `<svg class="w-3 h-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>${name}`;
+        
         div.onclick = () => openFile(name);
+        div.oncontextmenu = (e) => {
+          e.preventDefault();
+          showContextMenu(e.pageX, e.pageY, name);
+        };
         list.appendChild(div);
       });
+    }
+
+    function showContextMenu(x, y, filename) {
+      const menu = document.getElementById('contextMenu');
+      State.contextTarget = filename;
+      menu.style.display = 'block';
+      menu.style.left = x + 'px';
+      menu.style.top = y + 'px';
+    }
+
+    function hideContextMenu() {
+      document.getElementById('contextMenu').style.display = 'none';
+    }
+
+    document.addEventListener('click', hideContextMenu);
+
+    function openFile(name) {
+      if (!name) return;
+      State.activeFile = name;
+      const lang = getLangFromExt(name);
+      monaco.editor.setModelLanguage(editor.getModel(), lang);
+      editor.setValue(State.files[name] || "");
+      document.getElementById('fileLabel').textContent = name;
+      document.getElementById('langLabel').textContent = lang;
+      refreshFileList();
+    }
+
+    document.getElementById('openFolderBtn').onclick = async () => {
+      try {
+        State.folderHandle = await window.showDirectoryPicker();
+        State.files = {};
+        for await (const entry of State.folderHandle.values()) {
+          if (entry.kind === 'file') {
+            const file = await entry.getFile();
+            State.files[entry.name] = await file.text();
+          }
+        }
+        const firstFile = Object.keys(State.files).find(f => f.endsWith('.html')) || Object.keys(State.files)[0];
+        State.previewFile = firstFile;
+        openFile(firstFile);
+        syncPreviewDropdowns();
+        document.getElementById('saveStatus').textContent = "Connected to folder";
+      } catch(e) { console.warn("Access cancelled."); }
+    };
+
+    document.getElementById('newFileBtn').onclick = async () => {
+      if (!State.folderHandle) return alert("Open a folder first.");
+      const name = prompt("Filename (e.g. index.html):");
+      if (name) {
+        State.files[name] = "";
+        await State.folderHandle.getFileHandle(name, { create: true });
+        openFile(name);
+        syncPreviewDropdowns();
+      }
+    };
+
+    // Keep Preview Engine (Simplified)
+    async function getPreviewHTML(filename) {
+      const content = State.files[filename] || "";
+      const ext = filename.split('.').pop().toLowerCase();
+      if (ext === 'html') return content; 
+      if (ext === 'md') return marked.parse(content);
+      return `<pre style="color:#333; padding:20px;">${content}</pre>`;
+    }
+
+    async function autoRefreshPreviews() {
+      if (!State.previewFile) return;
+      const html = await getPreviewHTML(State.previewFile);
+      if (!document.getElementById('previewBubble').classList.contains('hidden')) document.getElementById('bubbleFrame').srcdoc = html;
+      if (!document.getElementById('fullscreenPreview').classList.contains('hidden')) document.getElementById('fullFrame').srcdoc = html;
     }
 
     function syncPreviewDropdowns() {
@@ -316,11 +319,7 @@
           if (name === State.previewFile) opt.selected = true;
           sel.appendChild(opt);
         });
-        sel.onchange = (e) => {
-          State.previewFile = e.target.value;
-          autoRefreshPreviews();
-          selects.forEach(s => s.value = e.target.value);
-        };
+        sel.onchange = (e) => { State.previewFile = e.target.value; autoRefreshPreviews(); };
       });
     }
 
@@ -330,58 +329,11 @@
       return map[ext] || 'plaintext';
     }
 
-    document.getElementById('openFolderBtn').onclick = async () => {
-      try {
-        State.folderHandle = await window.showDirectoryPicker();
-        State.files = {};
-        for await (const entry of State.folderHandle.values()) {
-          if (entry.kind === 'file') {
-            const file = await entry.getFile();
-            State.files[entry.name] = await file.text();
-          }
-        }
-        State.activeFile = State.files['index.html'] ? 'index.html' : Object.keys(State.files)[0];
-        openFile(State.activeFile);
-        syncPreviewDropdowns();
-      } catch(e) { console.warn("Folder access cancelled."); }
-    };
-
-    async function saveToDisk() {
-      if (!State.folderHandle) {
-        saveVFS();
-        alert("Saved to local browser storage.");
-        return;
-      }
-      try {
-        const handle = await State.folderHandle.getFileHandle(State.activeFile, { create: true });
-        const writable = await handle.createWritable();
-        await writable.write(editor.getValue());
-        await writable.close();
-        document.getElementById('saveStatus').textContent = "Synced to Disk";
-      } catch(e) { alert("Permission denied to write to disk."); }
-    }
-
-    document.getElementById('newFileBtn').onclick = () => {
-      const name = prompt("Filename with extension:");
-      if (name) {
-        State.files[name] = "";
-        openFile(name);
-        syncPreviewDropdowns();
-      }
-    };
-
-    document.getElementById('togglePreviewBtn').onclick = () => {
-      document.getElementById('previewBubble').classList.toggle('hidden');
-      autoRefreshPreviews();
-    };
+    // Toggle Buttons
+    document.getElementById('togglePreviewBtn').onclick = () => { document.getElementById('previewBubble').classList.toggle('hidden'); autoRefreshPreviews(); };
     document.getElementById('closeBubble').onclick = () => document.getElementById('previewBubble').classList.add('hidden');
-    document.getElementById('fullscreenBtn').onclick = () => {
-      document.getElementById('fullscreenPreview').classList.remove('hidden');
-      autoRefreshPreviews();
-    };
+    document.getElementById('fullscreenBtn').onclick = () => { document.getElementById('fullscreenPreview').classList.remove('hidden'); autoRefreshPreviews(); };
     document.getElementById('backToEditor').onclick = () => document.getElementById('fullscreenPreview').classList.add('hidden');
-    document.getElementById('saveFileBtn').onclick = saveToDisk;
-
   </script>
 </body>
 </html>
