@@ -9,25 +9,22 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 
   <style>
-    :root { --glass: rgba(15, 23, 42, 0.9); }
+    :root { --glass: rgba(15, 23, 42, 0.95); --accent: #7c3aed; }
     * { font-family: 'Inter', sans-serif; transition: background-color 0.2s; }
-    body { background-color: #020617; overflow: hidden; height: 100vh; color: #e2e8f0; }
-    
-    /* UI Components */
+    body { background-color: #020617; overflow: hidden; height: 100vh; color: #e2e8f0; margin: 0; }
     .titlebar { background: linear-gradient(90deg, #6d28d9 0%, #db2777 100%); }
-    .glass { background: var(--glass); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.1); }
+    .glass { background: var(--glass); backdrop-filter: blur(16px); border-right: 1px solid rgba(255,255,255,0.08); }
     #editor { height: 100%; width: 100%; }
-    .file-item.active { background: rgba(124, 58, 237, 0.2); border-left: 3px solid #a78bfa; color: white; }
-    
-    /* Media & Menus */
+    .file-item { border-left: 3px solid transparent; user-select: none; }
+    .file-item:hover { background: rgba(255,255,255,0.05); }
+    .file-item.active { background: rgba(124, 58, 237, 0.15); border-left: 3px solid var(--accent); color: white; }
     #mediaPreview { display: none; position: absolute; inset: 0; background: #0f172a; z-index: 20; align-items: center; justify-content: center; flex-direction: column; }
-    #contextMenu { display: none; position: fixed; z-index: 1000; width: 150px; background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 4px; box-shadow: 0 10px 20px rgba(0,0,0,0.4); }
-    .menu-item { padding: 8px 12px; font-size: 12px; cursor: pointer; border-radius: 4px; }
-    .menu-item:hover { background: #4f46e5; }
-    
+    #contextMenu { display: none; position: fixed; z-index: 1000; width: 170px; background: #1e293b; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 5px; box-shadow: 0 15px 30px rgba(0,0,0,0.6); }
+    .menu-item { padding: 10px 14px; font-size: 12px; cursor: pointer; border-radius: 5px; display: flex; align-items: center; gap: 10px; }
+    .menu-item:hover { background: var(--accent); color: white; }
     iframe { border: none; background: white; width: 100%; height: 100%; }
     .hidden { display: none !important; }
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
   </style>
 </head>
@@ -39,80 +36,81 @@
   </div>
 
   <div class="flex flex-col h-screen">
-    <div class="titlebar h-10 flex items-center justify-between px-4 shadow-lg shrink-0">
-      <div class="flex items-center gap-2">
-        <div class="flex gap-1.5"><div class="w-3 h-3 rounded-full bg-red-400"></div><div class="w-3 h-3 rounded-full bg-amber-400"></div><div class="w-3 h-3 rounded-full bg-emerald-400"></div></div>
-        <span class="ml-4 text-[10px] font-bold tracking-widest uppercase opacity-90">Droplet ++ IDE</span>
+    <header class="titlebar h-10 flex items-center justify-between px-4 shadow-xl shrink-0 z-50">
+      <div class="flex items-center gap-3">
+        <div class="flex gap-1.5"><div class="w-3 h-3 rounded-full bg-red-500"></div><div class="w-3 h-3 rounded-full bg-amber-500"></div><div class="w-3 h-3 rounded-full bg-emerald-500"></div></div>
+        <span class="text-[11px] font-black tracking-[0.2em] uppercase text-white/90 ml-2">Droplet ++ IDE</span>
       </div>
-      <div class="text-[9px] uppercase font-bold opacity-60 italic">Deep Link Engine: Optimized</div>
-    </div>
+      <div class="flex items-center gap-2">
+        <span class="text-[9px] uppercase font-bold tracking-widest opacity-70">Folder Sync Mode</span>
+      </div>
+    </header>
 
     <div class="flex flex-1 overflow-hidden">
-      <div class="w-64 glass flex flex-col shrink-0 border-r border-white/5">
+      <aside class="w-64 glass flex flex-col shrink-0">
         <div class="p-4 flex items-center justify-between border-b border-white/5 bg-white/5">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Project Files</span>
-          <button id="newFileBtn" class="p-1 hover:bg-white/10 rounded"><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg></button>
+          <span class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Explorer</span>
+          <button id="newFileBtn" class="p-1 hover:bg-white/10 rounded">＋</button>
         </div>
         <div id="fileList" class="flex-1 overflow-y-auto py-2"></div>
-        <div class="p-4 border-t border-white/5 bg-black/20">
-            <button id="openFolderBtn" class="w-full py-2 bg-slate-800 hover:bg-slate-700 rounded text-[10px] font-bold uppercase transition border border-white/5">Open Folder</button>
+        <div class="p-4 border-t border-white/5 bg-black/20 flex flex-col gap-2">
+            <button id="openFolderBtn" class="w-full py-2.5 bg-slate-800 hover:bg-slate-700 rounded-md text-[10px] font-bold uppercase transition border border-white/10 shadow-lg">Open Folder</button>
         </div>
-      </div>
+      </aside>
 
-      <div class="flex-1 flex flex-col min-w-0">
-        <div class="h-12 bg-slate-900/40 border-b border-white/5 flex items-center justify-between px-4">
-          <span id="activeFileDisplay" class="text-xs font-mono text-violet-400 underline underline-offset-4 decoration-violet-500/50">index.html</span>
+      <main class="flex-1 flex flex-col min-w-0 bg-[#0b0f1a]">
+        <div class="h-12 bg-slate-900/60 border-b border-white/5 flex items-center justify-between px-4">
+          <div id="activeFileDisplay" class="text-xs font-mono text-violet-400 bg-violet-500/10 px-3 py-1 rounded-full border border-violet-500/20">no_file_selected</div>
           <div class="flex items-center gap-3">
-            <select id="previewSelect" class="bg-slate-800 text-[10px] border border-white/10 rounded px-2 py-1 outline-none w-32"></select>
-            <div class="h-4 w-px bg-white/10"></div>
-            <button id="togglePreviewBtn" class="p-2 hover:bg-white/10 rounded-full"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
-            <button id="fullscreenBtn" class="p-2 hover:bg-white/10 rounded-full"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg></button>
+            <div class="flex items-center bg-slate-800/80 rounded-lg p-1 border border-white/5">
+               <span class="text-[9px] font-bold uppercase px-2 opacity-50">Preview Root:</span>
+               <select id="previewSelect" class="bg-transparent text-[10px] text-violet-300 font-bold outline-none cursor-pointer pr-2"></select>
+            </div>
+            <button id="togglePreviewBtn" class="p-2 hover:bg-white/10 rounded-lg transition" title="Preview"><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
+            <button id="fullscreenBtn" class="p-2 hover:bg-white/10 rounded-lg transition" title="Fullscreen"><svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg></button>
           </div>
         </div>
 
-        <div class="flex-1 relative">
+        <div class="flex-1 relative overflow-hidden">
           <div id="mediaPreview"></div>
           <div id="editor"></div>
         </div>
 
-        <div class="h-8 bg-slate-950 border-t border-white/5 flex items-center justify-between px-4 text-[10px] text-slate-500 font-mono">
-          <div class="flex gap-4">
+        <footer class="h-8 bg-[#020617] border-t border-white/5 flex items-center justify-between px-4 text-[10px] text-slate-500">
+          <div class="flex gap-6 font-mono">
             <span id="posLabel">Ln 1, Col 1</span>
-            <span id="fileLabel">index.html</span>
+            <span id="fileLabel">idle</span>
           </div>
-          <span class="opacity-40 uppercase tracking-widest">Ready</span>
-        </div>
-      </div>
+          <span id="langLabel" class="uppercase font-bold text-violet-400/80">N/A</span>
+        </footer>
+      </main>
     </div>
   </div>
 
-  <div id="previewBubble" class="hidden fixed bottom-12 right-6 w-[450px] h-[350px] glass rounded-2xl shadow-2xl flex flex-col overflow-hidden z-40 border border-white/10">
-    <div class="h-10 bg-white/5 flex items-center justify-between px-4 border-b border-white/5">
-      <span class="text-[9px] font-bold uppercase tracking-widest opacity-60">Live Preview</span>
+  <div id="previewBubble" class="hidden fixed bottom-14 right-8 w-[480px] h-[360px] glass rounded-2xl shadow-2xl flex flex-col overflow-hidden z-[100] border border-white/10">
+    <div class="h-11 bg-white/5 flex items-center justify-between px-4 border-b border-white/5">
+      <span class="text-[10px] font-bold uppercase tracking-widest opacity-80">Live Viewport</span>
       <button id="closeBubble" class="text-lg opacity-40 hover:opacity-100">×</button>
     </div>
     <iframe id="bubbleFrame" sandbox="allow-scripts allow-same-origin"></iframe>
   </div>
 
-  <div id="fullscreenPreview" class="hidden fixed inset-0 bg-slate-950 z-[100] flex flex-col">
-    <div class="h-14 bg-slate-900 border-b border-white/10 flex items-center px-6 gap-6">
-      <button id="backToEditor" class="text-sm hover:text-violet-400 transition">← Exit Fullscreen</button>
-      <select id="fullPreviewSelect" class="bg-slate-800 text-xs rounded px-3 py-1.5 outline-none w-48"></select>
+  <div id="fullscreenPreview" class="hidden fixed inset-0 bg-slate-950 z-[200] flex flex-col">
+    <div class="h-16 bg-slate-900 border-b border-white/10 flex items-center px-6 justify-between">
+      <button id="backToEditor" class="text-sm font-bold hover:text-violet-400 transition flex items-center gap-2">← Back to Code</button>
+      <select id="fullPreviewSelect" class="bg-slate-800 text-xs font-bold rounded px-4 py-2 border border-white/10 outline-none w-56 text-violet-300"></select>
     </div>
     <iframe id="fullFrame" sandbox="allow-scripts allow-same-origin"></iframe>
   </div>
 
   <script>
-    const State = { files: {}, activeFile: null, previewFile: null, rightClickedFile: null };
+    const State = { files: {}, activeFile: null, previewFile: null, folderHandle: null, rightClickedFile: null };
     let editor;
 
     require.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }});
     require(['vs/editor/editor.main'], function () {
-      
-      // Editor Init (NO Link Providers, links disabled)
       editor = monaco.editor.create(document.getElementById('editor'), {
-        theme: 'vs-dark', automaticLayout: true, fontFamily: 'Fira Code', fontSize: 13, 
-        minimap: { enabled: false }, links: false, padding: { top: 16 }
+        theme: 'vs-dark', automaticLayout: true, fontFamily: 'Fira Code', fontSize: 13, minimap: { enabled: false }, links: false
       });
 
       editor.onDidChangeCursorPosition((e) => {
@@ -127,100 +125,95 @@
       });
 
       loadDefaults();
-      initDragAndDrop();
-    });
-
-    // Handle messages from the virtual iframe (Link routing)
-    window.addEventListener('message', (e) => {
-      if (e.data && e.data.type === 'navigate') {
-        const target = e.data.filename.split('/').pop();
-        if (State.files[target]) openFile(target);
-      }
+      initUI();
     });
 
     function loadDefaults() {
-      State.files = {
-        'index.html': { 
-            content: '<!DOCTYPE html>\n<html>\n<head>\n<style>\n  body { background: #0f172a; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: system-ui; }\n  .card { padding: 3rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 20px; text-align: center; color: white; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }\n  h1 { font-size: 3.5rem; margin: 0; background: linear-gradient(90deg, #a78bfa, #f472b6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }\n  p { opacity: 0.6; font-size: 1.1rem; }\n</style>\n</head>\n<body>\n  <div class="card">\n    <h1>Hello World</h1>\n    </div>\n</body>\n</html>', 
-            isBinary: false 
-        }
-      };
+      State.files = { 'index.html': { content: '<h1>Drop or Open a Folder</h1>', isBinary: false } };
       State.previewFile = 'index.html';
-      refreshFileList(); syncPreviewDropdowns(); openFile('index.html');
+      openFile('index.html');
+      refreshFileList();
+      syncPreviewDropdowns();
     }
 
-    function resolveDependencies(html) {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-      const clean = (p) => p ? p.replace(/^\.\//, '') : '';
-
-      // Auto-linking CSS/JS in memory
-      doc.querySelectorAll('link[rel="stylesheet"], script[src]').forEach(el => {
-        const file = clean(el.getAttribute(el.tagName === 'LINK' ? 'href' : 'src'));
-        if (State.files[file]) {
-          const tag = document.createElement(el.tagName === 'LINK' ? 'style' : 'script');
-          tag.textContent = State.files[file].content;
-          el.replaceWith(tag);
-        }
-      });
-
-      // Navigation routing (Fixes the link bug without showing "Go to File")
-      const script = document.createElement('script');
-      script.textContent = `
-        document.addEventListener('click', e => {
-          const a = e.target.closest('a');
-          if (a && a.getAttribute('href') && !a.getAttribute('href').startsWith('http')) {
-            e.preventDefault();
-            window.parent.postMessage({ type: 'navigate', filename: a.getAttribute('href') }, '*');
+    // UPDATED: Now clears everything and isolates folder contents
+    document.getElementById('openFolderBtn').onclick = async () => {
+      try {
+        const handle = await window.showDirectoryPicker();
+        State.folderHandle = handle;
+        
+        // 1. CLEAR CURRENT STATE
+        State.files = {}; 
+        State.previewFile = null;
+        State.activeFile = null;
+        
+        // 2. READ NEW FOLDER
+        for await (const entry of handle.values()) {
+          if (entry.kind === 'file') {
+            const file = await entry.getFile();
+            const ext = entry.name.split('.').pop().toLowerCase();
+            const isBin = ['png','jpg','jpeg','gif','webp','mp3','wav','mp4','webm'].includes(ext);
+            
+            if (isBin) {
+              State.files[entry.name] = { isBinary: true, blobUrl: URL.createObjectURL(file) };
+            } else {
+              State.files[entry.name] = { isBinary: false, content: await file.text() };
+            }
           }
-        });
-      `;
-      doc.head.appendChild(script);
-      return doc.documentElement.outerHTML;
-    }
+        }
 
-    function updateLivePreviews() {
-      if (!State.previewFile || !State.files[State.previewFile]) return;
-      const html = resolveDependencies(State.files[State.previewFile].content);
-      document.getElementById('bubbleFrame').srcdoc = html;
-      document.getElementById('fullFrame').srcdoc = html;
-    }
+        // 3. AUTO-SELECT BEST FILE
+        const files = Object.keys(State.files);
+        if (files.length > 0) {
+          const main = files.find(f => f === 'index.html') || files.find(f => f.endsWith('.html')) || files[0];
+          openFile(main);
+        }
+        
+        refreshFileList();
+        syncPreviewDropdowns();
+        updateLivePreviews();
+      } catch (err) { console.warn("Access denied", err); }
+    };
 
     function openFile(name) {
       if (!State.files[name]) return;
       if (State.activeFile && !State.files[State.activeFile].isBinary) {
         State.files[State.activeFile].content = editor.getValue();
       }
+      
       State.activeFile = name;
       const data = State.files[name];
       const media = document.getElementById('mediaPreview');
       const editorDiv = document.getElementById('editor');
 
       if (data.isBinary) {
-        editorDiv.style.visibility = 'hidden';
-        media.style.display = 'flex';
+        editorDiv.style.visibility = 'hidden'; media.style.display = 'flex';
         renderMedia(name, data);
       } else {
-        editorDiv.style.visibility = 'visible';
-        media.style.display = 'none';
+        editorDiv.style.visibility = 'visible'; media.style.display = 'none';
         editor.setValue(data.content);
-        const ext = name.split('.').pop();
-        monaco.editor.setModelLanguage(editor.getModel(), ext === 'js' ? 'javascript' : (ext === 'css' ? 'css' : 'html'));
+        monaco.editor.setModelLanguage(editor.getModel(), getLang(name));
       }
+      
       if (name.endsWith('.html')) State.previewFile = name;
       document.getElementById('activeFileDisplay').textContent = name;
       document.getElementById('fileLabel').textContent = name;
-      refreshFileList(); syncPreviewDropdowns(); updateLivePreviews();
+      document.getElementById('langLabel').textContent = getLang(name).toUpperCase();
+      
+      refreshFileList();
+      syncPreviewDropdowns();
     }
 
     function renderMedia(name, data) {
       const ext = name.split('.').pop().toLowerCase();
-      const media = document.getElementById('mediaPreview');
-      media.innerHTML = '';
+      const container = document.getElementById('mediaPreview');
+      container.innerHTML = '';
       if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
-        media.innerHTML = `<img src="${data.blobUrl}" class="max-w-[80%] max-h-[80%] shadow-2xl rounded border border-white/10">`;
+        container.innerHTML = `<img src="${data.blobUrl}" class="max-w-[85%] max-h-[85%] object-contain rounded-lg shadow-2xl border border-white/10">`;
       } else if (['mp4', 'webm'].includes(ext)) {
-        media.innerHTML = `<video controls src="${data.blobUrl}" class="max-w-[80%] rounded shadow-2xl"></video>`;
+        container.innerHTML = `<video controls autoplay class="max-w-[85%] rounded-lg shadow-2xl"><source src="${data.blobUrl}"></video>`;
+      } else if (['mp3', 'wav'].includes(ext)) {
+        container.innerHTML = `<div class="p-8 bg-slate-800 rounded-2xl"><audio controls src="${data.blobUrl}"></audio></div>`;
       }
     }
 
@@ -228,92 +221,54 @@
       const list = document.getElementById('fileList'); list.innerHTML = '';
       Object.keys(State.files).sort().forEach(name => {
         const div = document.createElement('div');
-        div.className = `file-item px-4 py-2 text-[11px] cursor-pointer flex items-center gap-2 ${State.activeFile === name ? 'active' : ''}`;
+        div.className = `file-item px-4 py-2 text-xs cursor-pointer truncate ${State.activeFile === name ? 'active' : ''}`;
         div.textContent = name;
         div.onclick = () => openFile(name);
-        div.oncontextmenu = (e) => {
-            e.preventDefault();
-            State.rightClickedFile = name;
-            const menu = document.getElementById('contextMenu');
-            menu.style.display = 'block';
-            menu.style.left = e.pageX + 'px'; menu.style.top = e.pageY + 'px';
-        };
+        div.oncontextmenu = (e) => { e.preventDefault(); State.rightClickedFile = name; const m = document.getElementById('contextMenu'); m.style.display='block'; m.style.left=e.pageX+'px'; m.style.top=e.pageY+'px'; };
         list.appendChild(div);
       });
     }
 
     function syncPreviewDropdowns() {
-      const htmls = Object.keys(State.files).filter(f => f.endsWith('.html'));
       const selects = [document.getElementById('previewSelect'), document.getElementById('fullPreviewSelect')];
-      selects.forEach(s => {
-        s.innerHTML = '';
-        htmls.forEach(h => {
+      selects.forEach(sel => {
+        sel.innerHTML = '';
+        Object.keys(State.files).filter(f => f.endsWith('.html')).forEach(h => {
           const opt = document.createElement('option'); opt.value = h; opt.textContent = h;
           if (h === State.previewFile) opt.selected = true;
-          s.appendChild(opt);
+          sel.appendChild(opt);
         });
-        s.onchange = (e) => { State.previewFile = e.target.value; updateLivePreviews(); };
+        sel.onchange = (e) => { State.previewFile = e.target.value; updateLivePreviews(); };
       });
     }
 
-    function initDragAndDrop() {
-      const list = document.getElementById('fileList');
-      list.addEventListener('dragover', e => e.preventDefault());
-      list.addEventListener('drop', async e => {
-        e.preventDefault();
-        for (const f of e.dataTransfer.files) {
-          const isBin = f.type.startsWith('image/') || f.type.startsWith('video/');
-          State.files[f.name] = { isBinary: isBin, content: isBin ? null : await f.text(), blobUrl: isBin ? URL.createObjectURL(f) : null };
-        }
-        refreshFileList(); syncPreviewDropdowns();
-      });
+    function updateLivePreviews() {
+      const target = State.files[State.previewFile];
+      if (!target) return;
+      document.getElementById('bubbleFrame').srcdoc = target.content;
+      document.getElementById('fullFrame').srcdoc = target.content;
     }
 
-    // Context Menu Logic
+    function initUI() {
+      document.getElementById('togglePreviewBtn').onclick = () => document.getElementById('previewBubble').classList.toggle('hidden');
+      document.getElementById('closeBubble').onclick = () => document.getElementById('previewBubble').classList.add('hidden');
+      document.getElementById('fullscreenBtn').onclick = () => document.getElementById('fullscreenPreview').classList.remove('hidden');
+      document.getElementById('backToEditor').onclick = () => document.getElementById('fullscreenPreview').classList.add('hidden');
+      document.getElementById('newFileBtn').onclick = () => { const n = prompt("Filename:"); if(n) { State.files[n] = {content:"", isBinary:false}; refreshFileList(); openFile(n); }};
+      window.onclick = () => document.getElementById('contextMenu').style.display='none';
+    }
+
     window.renameCurrentFile = () => {
-      const n = prompt("New name:", State.rightClickedFile);
-      if (n && n !== State.rightClickedFile) {
-        State.files[n] = State.files[State.rightClickedFile];
-        delete State.files[State.rightClickedFile];
-        if (State.activeFile === State.rightClickedFile) State.activeFile = n;
-        refreshFileList(); openFile(n);
-      }
+      const old = State.rightClickedFile; const n = prompt("Rename to:", old);
+      if(n && n !== old) { State.files[n] = State.files[old]; delete State.files[old]; refreshFileList(); openFile(n); }
     };
-    window.deleteCurrentFile = () => {
-      if (confirm(`Delete ${State.rightClickedFile}?`)) {
-        delete State.files[State.rightClickedFile];
-        openFile(Object.keys(State.files)[0]);
-        refreshFileList();
-      }
-    };
+    window.deleteCurrentFile = () => { if(confirm("Delete?")) { delete State.files[State.rightClickedFile]; openFile(Object.keys(State.files)[0]); refreshFileList(); } };
 
-    // UI Listeners
-    document.getElementById('togglePreviewBtn').onclick = () => document.getElementById('previewBubble').classList.toggle('hidden');
-    document.getElementById('closeBubble').onclick = () => document.getElementById('previewBubble').classList.add('hidden');
-    document.getElementById('fullscreenBtn').onclick = () => document.getElementById('fullscreenPreview').classList.remove('hidden');
-    document.getElementById('backToEditor').onclick = () => document.getElementById('fullscreenPreview').classList.add('hidden');
-    window.onclick = () => document.getElementById('contextMenu').style.display = 'none';
-    
-    document.getElementById('newFileBtn').onclick = () => {
-      const n = prompt("File name:");
-      if (n) { State.files[n] = { content: '', isBinary: false }; refreshFileList(); openFile(n); }
-    };
-
-    document.getElementById('openFolderBtn').onclick = async () => {
-      try {
-        const handle = await window.showDirectoryPicker();
-        State.files = {};
-        for await (const entry of handle.values()) {
-          if (entry.kind === 'file') {
-            const f = await entry.getFile();
-            const isBin = f.type.startsWith('image/') || f.type.startsWith('video/');
-            State.files[f.name] = { isBinary: isBin, content: isBin ? null : await f.text(), blobUrl: isBin ? URL.createObjectURL(f) : null };
-          }
-        }
-        openFile(Object.keys(State.files)[0]);
-        refreshFileList();
-      } catch(e) {}
-    };
+    function getLang(n) {
+      const ext = n.split('.').pop().toLowerCase();
+      const map = { js:'javascript', html:'html', css:'css', py:'python', json:'json', md:'markdown' };
+      return map[ext] || 'plaintext';
+    }
   </script>
 </body>
 </html>
