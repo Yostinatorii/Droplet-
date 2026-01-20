@@ -13,7 +13,7 @@
 
 ## 🚀 Quick Start
 
-1. Open `index.html` in any modern browser (Chrome, Edge, or Opera recommended for File System support).
+1. Open `index.html` OR https://yostinatorii.github.io/Droplet-/ in any modern browser (Chrome, Edge, or Opera recommended for File System support).
 2. Click **"Open Editor"**.
 3. Grant permission to access your project folder.
 4. Start building!
