@@ -29,4 +29,4 @@
 This project is open-source and available for everyone. See the **Terms of Service** within the app for usage details.
 
 ---
-*Built with ❤️ for the developer community.*
+-Yostinatorii
