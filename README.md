@@ -24,6 +24,10 @@
 * [Google Fonts](https://fonts.google.com/) - Inter typeface.
 * [Lucide Icons / Heroicons](https://heroicons.com/) - For the crisp iconography.
 
+## Reviews
+* Though we dont have any reveiws as of right now, go to 'https://www.youtube.com' and make YOUR review there.
+* Thank you devs for reaching 333 views within the first few weeks, I really appreciate it!!!
+
 ## 📄 License
 
 This project is open-source and available for everyone. See the **Terms of Service** within the app for usage details.
